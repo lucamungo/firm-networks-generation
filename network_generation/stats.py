@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 
 def compute_degrees(
-    W: torch.Tensor, beta_degree: float, dim: int = 1, eps: float = 1e-8
+    W: torch.Tensor, beta_degree: float, dim: int = 1, eps: float = 1e-8, threshold: float = 1e-5
 ) -> torch.Tensor:
     """
     Compute soft degrees of a weighted adjacency matrix.
@@ -33,7 +33,7 @@ def compute_degrees(
         raise ValueError("dim must be 0 or 1")
 
     # Apply sigmoid with temperature
-    soft_adjacency = torch.sigmoid(beta_degree * W)
+    soft_adjacency = torch.sigmoid(beta_degree * (W - threshold))
 
     # Sum over specified dimension and add eps for numerical stability
     return torch.sum(soft_adjacency, dim=dim) + eps
