@@ -1,0 +1,420 @@
+# Cursor Rules
+
+These rules guide how the AI assistant (Cursor) should handle code editing, generation, and refactoring. Adherence to these guidelines helps ensure clarity, efficiency, and maintainability in any codebase.
+
+---
+
+## Code Editing Guidelines
+
+1. **Precision**  
+   - Focus changes only on specific areas of the code, ensuring they do not unintentionally affect functionality elsewhere.
+
+2. **Preserve Functionality**  
+   - Do not simplify or restructure code at the expense of removing essential logic or altering expected behavior.
+
+3. **Testing Before and After Edits**  
+   - Always test modified code to verify that changes produce the expected behavior without introducing regressions.
+
+4. **Document Changes**  
+   - Leave clear comments or commit messages describing the purpose and impact of code edits.
+
+---
+
+## Type Hints and Static Typing
+
+1. **Modern Type Syntax**
+   - Use built-in generics directly (e.g., `list[str]`, `dict[str, int]`, `tuple[str, str]`)
+   - Only import from `typing` module for types not available in built-ins (e.g., `TypeVar`, `Protocol`, `Callable`)
+   - For classmethod return types, use quoted class name (e.g., `"MyClass"`) instead of TypeVars when returning the same type
+   - Use `|` for unions in Python 3.10+ (e.g., `str | None` instead of `Optional[str]`)
+
+2. **Type Coverage**
+   - All function parameters and return values must have type hints
+   - All class attributes must have type hints
+   - Use descriptive type aliases for complex types
+   - Document type variables and constraints in docstrings
+
+3. **Type Precision**
+   - Be as specific as possible with types (e.g., `list[str]` instead of just `list`)
+   - Use `TypeVar` with constraints when appropriate
+   - Use `Literal` types for fixed string/number options
+   - Consider using `NewType` for semantic distinction
+
+---
+
+## Class Design and Constructor Patterns
+
+1. **Constructor Design**
+   - `__init__` constructors must always take ALL initialized elements of the class as explicit inputs.
+   - Never initialize attributes to `None` in `__init__` by default.
+   - Use classmethods (e.g., `from_csv`, `from_json`) for alternative construction patterns.
+   - Document all constructor parameters and their types.
+
+2. **Path Handling**
+   - Always use `pathlib.Path` for path manipulation instead of string paths.
+   - Accept both string and Path objects as input by using `str | Path` typing.
+   - Convert string paths to Path objects early in the function.
+
+3. **Immutability**
+   - Prefer immutable state where possible.
+   - If a class needs to be modified after construction, consider using a builder pattern or factory methods.
+
+---
+
+## Testing and Fixtures
+
+1. **Test Organization**
+   - Group tests logically by functionality
+   - Use descriptive test names that indicate what is being tested
+   - Structure tests from basic functionality to edge cases
+   - Include both positive and negative test cases
+
+2. **Fixture Design**
+   - Use session-scoped fixtures for expensive resources (e.g., database connections, large file reads)
+   - Create function-scoped fixtures for mutable test data
+   - Implement proper cleanup in fixtures using try/finally or yield
+   - Use temporary files/directories with automatic cleanup
+   - Document fixture purpose and return values
+
+3. **Sample Data**
+   - Create minimal but comprehensive sample datasets
+   - Document sample data structure and expected values
+   - Include edge cases in sample data
+   - Use realistic data that matches production format
+
+4. **Test Coverage**
+   - Aim for comprehensive test coverage of core functionality
+   - Test error handling and edge cases
+   - Include integration tests for critical paths
+   - Use coverage tools to identify untested code
+
+---
+
+## Logging and Error Handling
+
+1. **Logging Best Practices**
+   - Use appropriate log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+   - Include context in log messages (file paths, data shapes, variable values)
+   - Use structured logging for machine-readable logs
+   - Configure logging early in application startup
+
+2. **Error Messages**
+   - Write clear, actionable error messages
+   - Include relevant context in exceptions
+   - Use specific exception types
+   - Document expected exceptions in docstrings
+
+3. **Debugging Support**
+   - Add debug logging for complex operations
+   - Include intermediate state information
+   - Use consistent log message formatting
+   - Consider adding debug-only validation checks
+
+---
+
+## Project Organization
+
+1. **Module Structure**
+   - Use `__init__.py` to define public interfaces
+   - Keep implementation details private
+   - Group related functionality in submodules
+   - Use relative imports within packages
+
+2. **Interface Design**
+   - Define protocols/abstract base classes for interfaces
+   - Document interface contracts clearly
+   - Version public APIs appropriately
+   - Keep interfaces minimal and focused
+
+3. **Development Environment**
+   - Use `pyproject.toml` for package configuration and build settings
+   - Avoid `setup.py` unless absolutely necessary for legacy reasons
+   - Include configuration for common development tools (black, isort, etc.)
+   - Provide scripts for common development tasks
+   - Document development setup process
+   - Include all necessary development dependencies
+
+4. **Documentation**
+   - Write clear module, class, and function docstrings
+   - Include examples in docstrings
+   - Document complex algorithms and business logic
+   - Maintain a comprehensive README
+
+---
+
+## Performance Optimization
+
+1. **Efficient Operations**  
+   - Use vectorized operations in data processing libraries (e.g., pandas, NumPy) instead of manual loops.  
+   - Avoid unnecessary recomputation by caching results where appropriate (e.g., using `functools.lru_cache`).  
+   - Minimize blocking I/O operations by favoring asynchronous methods for file handling, database calls, and network requests.
+
+2. **Efficient Data Structures**  
+   - Use appropriate data structures for the task (e.g., dictionaries for lookups, sets for membership checks).  
+   - Optimize memory usage by using data types like `float32` or categorical types in large datasets.
+
+3. **Scalability**  
+   - Write code that can scale with larger datasets or workloads, ensuring efficient handling of growing data volumes or requests.
+
+---
+
+## Error Handling and Validation
+
+1. **Input Validation**  
+   - Validate all inputs at the start of a function or workflow.  
+   - Check data types, ranges, and structures to prevent invalid operations downstream.
+
+2. **Robust Error Handling**  
+   - Use specific exception types to clearly indicate what went wrong (e.g., `ValueError`, `TypeError`).  
+   - Implement fallback mechanisms where applicable (e.g., retry logic for failed I/O operations).  
+   - Provide user-friendly error messages while logging technical details for debugging.
+
+3. **Logging and Debugging**  
+   - Use structured logging (e.g., with unique identifiers) for error tracking and troubleshooting.  
+   - Avoid exposing sensitive information in logs or error messages.
+
+---
+
+## General Programming Practices
+
+1. **Testing**  
+   - Write automated tests for all functions, focusing on unit and integration tests.  
+   - Use a framework like `pytest` and ensure all tests pass before deploying changes.  
+   - Include edge cases, boundary conditions, and common failure scenarios in test coverage.
+
+2. **Documentation**  
+   - Document all public-facing functions, classes, and modules with clear and concise docstrings.  
+   - Maintain an updated README or project documentation for onboarding and reference.
+
+3. **Security**  
+   - If producing frontend code that exposes the system to public interactions:
+     - Sanitize all inputs to prevent security vulnerabilities (e.g., injection attacks).
+     - Use tools like `bandit` for static analysis to identify potential security issues.
+     - Never hardcode sensitive information (e.g., passwords, API keys); use environment variables instead.
+
+---
+
+## Key Reminders
+
+- Always prioritize **clarity, efficiency, and maintainability** in your code.  
+- Ensure all changes are well-validated, tested, and documented.  
+- Be precise and conservative with edits, avoiding unnecessary changes or reductions in functionality.  
+- Think holistically about how changes integrate with the broader codebase or workflow.
+
+---
+
+# Guidelines for Maintaining Differentiability in PyTorch
+
+PyTorch’s automatic differentiation engine, **Autograd**, is designed to handle a wide range of operations so that you can compute gradients with minimal friction. However, certain coding practices can inadvertently break the computational graph or prevent gradients from flowing. This document provides guidelines and best practices to ensure that your PyTorch code remains differentiable.
+
+## Table of Contents
+1. [Use PyTorch Tensors (not NumPy arrays) for Computations](#1-use-pytorch-tensors-not-numpy-arrays-for-computations)  
+2. [Avoid In-place Operations that Modify Values Required for Gradient Computation](#2-avoid-in-place-operations-that-modify-values-required-for-gradient-computation)  
+3. [Be Careful with `torch.no_grad()` and `.detach()`](#3-be-careful-with-torchno_grad-and-detach)  
+4. [Use PyTorch’s Built-in Functions Wherever Possible](#4-use-pytorchs-built-in-functions-wherever-possible)  
+5. [Check Gradient Flow for Custom Autograd Functions](#5-check-gradient-flow-for-custom-autograd-functions)  
+6. [Validate Gradients with `gradcheck` and Sanity Tests](#6-validate-gradients-with-gradcheck-and-sanity-tests)  
+7. [Use `.requires_grad_()` on Tensors for Which You Need Gradients](#7-use-requires_grad_-on-tensors-for-which-you-need-gradients)  
+8. [Use Proper Loss Functions and Keep Batch Dimensions](#8-use-proper-loss-functions-and-keep-batch-dimensions)  
+9. [Be Aware of Mixed Precision and Other Training Optimizations](#9-be-aware-of-mixed-precision-and-other-training-optimizations)  
+10. [Summary](#10-summary)
+
+---
+
+## 1. Use PyTorch Tensors (not NumPy arrays) for Computations
+
+- **Always convert** external data (like NumPy arrays) to PyTorch Tensors before performing computations that require gradient tracking.
+  
+```python
+import torch
+import numpy as np
+
+# Good practice
+x_np = np.random.randn(3, 3)
+x_torch = torch.from_numpy(x_np).float().requires_grad_(True)
+```
+
+- **Avoid** mixing NumPy operations on tensors that require gradients. Once you convert a PyTorch Tensor to a NumPy array (e.g., with `.numpy()`), you break the computational graph. Any further operations in NumPy will not be tracked by Autograd.
+
+---
+
+## 2. Avoid In-place Operations that Modify Values Required for Gradient Computation
+
+- **In-place methods** (like `tensor.add_()`, `tensor.mul_()`, or `+=`, `*=`) can interfere with gradient computation if the modified tensor is needed for backprop.
+- Wherever possible, **use the functional (out-of-place) version** of these operations to maintain the full computational graph.
+
+```python
+# Risky in-place example
+x = torch.ones(3, requires_grad=True)
+x += 1  # This may cause an issue if 'x' is needed for gradient
+
+# Recommended
+x = torch.ones(3, requires_grad=True)
+x = x + 1  # Out-of-place addition maintains grad history
+```
+
+- **If you must use in-place operations**, ensure you are aware of which Tensors are actually needed for gradient computation. Always check for runtime errors that mention “a leaf Variable that requires grad is being used in an in-place operation.”
+
+---
+
+## 3. Be Careful with `torch.no_grad()` and `.detach()`
+
+- **`torch.no_grad()`** is often used during evaluation or inference. Inside its context, PyTorch will not track gradients. Make sure you only use `torch.no_grad()` in places where you truly do not need gradients.
+
+```python
+# Example usage of torch.no_grad()
+with torch.no_grad():
+    # Operations here will not be tracked for gradients
+    predictions = model(input_data)
+```
+
+- **`.detach()`** is used to create a new tensor that does not require gradients from its source. If you call `.detach()` on a tensor that is still part of the model’s computational graph, subsequent operations on the detached tensor will not have gradients flowing back to the source.
+
+```python
+x = torch.randn(5, requires_grad=True)
+y = x.detach()  # y will not receive gradients from x
+```
+
+Use `.detach()` only when you explicitly want to stop gradients (for example, if you need a reference or a constant for further calculations).
+
+---
+
+## 4. Use PyTorch’s Built-in Functions Wherever Possible
+
+- PyTorch’s built-in functions (e.g., `torch.nn.functional.linear`, `torch.matmul`, `torch.log`, `torch.exp`, etc.) come with proper gradient definitions. Using these ensures that Autograd knows how to compute the backward pass.
+- **Avoid** rewriting built-in functions manually if you are not implementing something custom. Manual operations might lead to subtle gradient issues.
+
+---
+
+## 5. Check Gradient Flow for Custom Autograd Functions
+
+- When implementing custom operations by subclassing [`torch.autograd.Function`](https://pytorch.org/docs/stable/autograd.html#torch.autograd.Function), you need to explicitly define the `forward` and `backward` static methods.
+- Make sure:
+  - The `forward` method returns a PyTorch Tensor with `.requires_grad` set appropriately.
+  - The `backward` method properly computes the gradient for **all** inputs that require gradients.
+- Use the `ctx` context to store any information from the forward pass that you need for the backward pass.
+
+```python
+class MyCustomOp(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        output = input * input
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (input,) = ctx.saved_tensors
+        grad_input = 2 * input * grad_output
+        return grad_input
+```
+
+---
+
+## 6. Validate Gradients with `gradcheck` and Sanity Tests
+
+- PyTorch provides a utility called [`torch.autograd.gradcheck`](https://pytorch.org/docs/stable/generated/torch.autograd.gradcheck.html) which verifies numerical gradients against analytical gradients.
+- For any custom or complex operations, run `gradcheck` to ensure the backward pass is implemented correctly.
+  
+```python
+import torch
+from torch.autograd import gradcheck
+
+# Example usage
+def custom_func(x):
+    return MyCustomOp.apply(x)
+
+x = torch.randn(3, dtype=torch.double, requires_grad=True)
+test = gradcheck(custom_func, (x,), eps=1e-6, atol=1e-4)
+print(test)  # Should print True if gradients are correct
+```
+
+- **Sanity tests** (e.g., training a tiny model on a small dataset and checking if the loss decreases) can quickly reveal broken gradients.
+
+---
+
+## 7. Use `.requires_grad_()` on Tensors for Which You Need Gradients
+
+- By default, PyTorch Tensors have `requires_grad=False`.
+- If you need to track gradients for a particular tensor, do:
+
+```python
+x = torch.randn(3, 3).requires_grad_()
+# or equivalently
+x = torch.randn(3, 3, requires_grad=True)
+```
+
+- Check the parameter definitions in your model (e.g., all `nn.Parameters` or Tensors in `nn.Module`) to ensure they are set to `requires_grad=True`.
+
+---
+
+## 8. Use Proper Loss Functions and Keep Batch Dimensions
+
+- Ensure you are using valid loss functions (e.g., `nn.MSELoss`, `nn.CrossEntropyLoss`, etc.) and that the **input to the loss** is of the correct shape.
+- Watch out for operations that **accidentally reduce the dimension of your tensors** in ways that might break the loss function or produce unexpected gradients.
+  - For instance, if your network output is `[batch_size, num_classes]`, and your labels are `[batch_size]`, ensure you do not inadvertently squeeze the tensors into `[num_classes]`.
+
+---
+
+## 9. Be Aware of Mixed Precision and Other Training Optimizations
+
+- If you are using **mixed precision** (via `torch.cuda.amp` or other tools), ensure your code handles potential type casts that might cause gradient underflow or overflow.
+- Gradients can also be turned off inadvertently if you manage contexts incorrectly (e.g., mixing `autocast` with `no_grad` improperly).
+
+---
+
+## 10. Avoid masking operations
+
+- Masking operations can break the gradient flow.
+- If you must use masking, ensure you do not mask out the values that are required for gradient computation.
+- Prefer using `torch.where` or `torch.masked_select` instead of masking operations.
+- Most importantly, prefer computing masks with soft thresholding instead of hard thresholding, and use the soft thresholding weights to compute the gradient.
+
+---
+
+## 11. Summary
+
+1. **Keep it PyTorch**: Always use PyTorch Tensors (avoid NumPy in computations that require gradients).  
+2. **Watch out for in-place ops**: Use out-of-place operations whenever possible.  
+3. **Limit `torch.no_grad()` scopes**: Only use `torch.no_grad()` where you don’t need gradients.  
+4. **Use built-ins**: Prefer PyTorch’s built-in functions for reliable gradient tracking.  
+5. **Check custom ops**: Validate custom gradients with `gradcheck`.  
+6. **Sanity check**: Always test small models and see if they train.  
+7. **Inspect shapes**: Match shapes correctly when computing loss or performing operations.
+
+By following these guidelines, you can avoid the common pitfalls that break gradient flow and ensure that your PyTorch code remains fully differentiable.
+
+## Logging Best Practices
+
+1. **Logging Setup**
+   - Configure logging early in the application or test setup
+   - Use a consistent format across all log messages
+   - Include timestamp, log level, module name, and line number in log format
+   - Configure logging level based on environment (DEBUG for development/testing, INFO for production)
+
+2. **Log Level Usage**
+   - DEBUG: Detailed information for debugging
+   - INFO: General operational events
+   - WARNING: Unexpected but handled situations
+   - ERROR: Serious issues that need attention
+   - CRITICAL: System-level failures
+
+3. **Log Message Content**
+   - Include relevant context (variable values, state information)
+   - Make messages actionable and clear
+   - For data structures, include shape/size information
+   - Log input parameters and return values for complex operations
+   - Include correlation IDs for tracking related operations
+
+4. **Testing with Logs**
+   - Use caplog fixture in pytest for testing log messages
+   - Log intermediate values in complex calculations
+   - Log entry/exit of major operations
+   - Include timing information for performance-sensitive operations
+   - Log matrix shapes and key statistics in numerical operations
+
+5. **Debug Support**
+   - Add DEBUG level logs for matrix operations showing shapes and sample values
+   - Log intermediate results in complex algorithms
+   - Include stack traces for unexpected conditions
+   - Log system state when handling errors

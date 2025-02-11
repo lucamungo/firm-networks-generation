@@ -1,0 +1,32 @@
+venv/
+
+# Pycache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+
+# Inside the folders
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.pyw
+**/*.pyz
+
+# Pytest cache
+.pytest_cache/
+
+*.idea
+*.vscode
+
+# Coverage
+.coverage
+
+.DS_Store
+
+IMPLEMENTATION_PROGRESS.md
+
+
