@@ -1,6 +1,5 @@
 """Tests for power-law tail fitting utilities."""
 
-import numpy as np
 import pytest
 import torch
 

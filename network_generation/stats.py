@@ -5,7 +5,6 @@ including degrees, strengths, correlations, and aggregated matrices.
 """
 
 import torch
-import torch.nn.functional as F
 
 
 def compute_degrees(

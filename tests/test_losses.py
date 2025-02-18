@@ -23,7 +23,7 @@ def sample_config() -> dict:
             "log_in_degree_out_degree": 0.6,
             "log_out_strength_out_degree": 0.8,
         },
-        "hill_targets": {
+        "hill_exponent_targets": {
             "in_degree": -1.5,
             "out_degree": -1.6,
             "in_strength": -1.7,
@@ -257,52 +257,55 @@ class TestTotalLoss:
         M = sample_matrix.clone()
 
         # Precompute normalization constants at the base point for each component:
-        loss_corr, _ = compute_correlation_loss(M, sample_config["correlation_targets"], sample_config["beta_degree"])
+        loss_corr, _ = compute_correlation_loss(
+            M, sample_config["correlation_targets"], sample_config["beta_degree"]
+        )
         norm_corr = loss_corr.detach() + 1e-8
 
-        loss_hill, _ = compute_hill_losses(M, sample_config["hill_targets"],
-                                           sample_config["beta_degree"],
-                                           sample_config["beta_tail"],
-                                           sample_config["tail_fraction"])
+        loss_hill, _ = compute_hill_losses(
+            M,
+            sample_config["hill_exponent_targets"],
+            sample_config["beta_degree"],
+            sample_config["beta_tail"],
+            sample_config["tail_fraction"],
+        )
         norm_hill = loss_hill.detach() + 1e-8
 
-        loss_io = compute_io_loss(M, sample_config["group_matrix"], sample_config["io_matrix_target"])
+        loss_io = compute_io_loss(
+            M, sample_config["group_matrix"], sample_config["io_matrix_target"]
+        )
         norm_io = loss_io.detach() + 1e-8
 
-        loss_smooth, _ = compute_smoothness_loss(M, sample_config["beta_degree"], sample_config["beta_tail"])
+        loss_smooth, _ = compute_smoothness_loss(
+            M, sample_config["beta_degree"], sample_config["beta_tail"]
+        )
         norm_smooth = loss_smooth.detach() + 1e-8
 
         def correlation_func(x):
             loss, _ = compute_correlation_loss(
-                x,
-                sample_config["correlation_targets"],
-                sample_config["beta_degree"]
+                x, sample_config["correlation_targets"], sample_config["beta_degree"]
             )
             return loss / norm_corr
 
         def hill_func(x):
             loss, _ = compute_hill_losses(
                 x,
-                sample_config["hill_targets"],
+                sample_config["hill_exponent_targets"],
                 sample_config["beta_degree"],
                 sample_config["beta_tail"],
-                sample_config["tail_fraction"]
+                sample_config["tail_fraction"],
             )
             return loss / norm_hill
 
         def io_func(x):
             loss = compute_io_loss(
-                x,
-                sample_config["group_matrix"],
-                sample_config["io_matrix_target"]
+                x, sample_config["group_matrix"], sample_config["io_matrix_target"]
             )
             return loss / norm_io
 
         def smoothness_func(x):
             loss, _ = compute_smoothness_loss(
-                x,
-                sample_config["beta_degree"],
-                sample_config["beta_tail"]
+                x, sample_config["beta_degree"], sample_config["beta_tail"]
             )
             return loss / norm_smooth
 
@@ -318,21 +321,11 @@ class TestTotalLoss:
 
         # Test with only correlation loss
         config1 = sample_config.copy()
-        config1["loss_weights"] = {
-            "correlation": 1.0,
-            "hill": 0.0,
-            "io": 0.0,
-            "smooth": 0.0
-        }
+        config1["loss_weights"] = {"correlation": 1.0, "hill": 0.0, "io": 0.0, "smooth": 0.0}
 
         # Test with only hill loss
         config2 = sample_config.copy()
-        config2["loss_weights"] = {
-            "correlation": 0.0,
-            "hill": 1.0,
-            "io": 0.0,
-            "smooth": 0.0
-        }
+        config2["loss_weights"] = {"correlation": 0.0, "hill": 1.0, "io": 0.0, "smooth": 0.0}
 
         # Precompute normalization constants for each configuration.
         loss1, _ = compute_loss(M, config1)
@@ -358,7 +351,7 @@ class TestTotalLoss:
 
         # Create a more numerically stable version of the config
         stable_config = sample_config.copy()
-        stable_config["beta_tail"] = 1.0  
+        stable_config["beta_tail"] = 1.0
         stable_config["num_ccdf_points"] = 5
 
         # Reduce the weights of components relying on CCDF computation
@@ -366,7 +359,7 @@ class TestTotalLoss:
             "correlation": 1.0,
             "hill": 0.1,  # Reduce weight of hill loss
             "io": 1.0,
-            "smooth": 1.0  # Reduce weight of smoothness loss
+            "smooth": 1.0,  # Reduce weight of smoothness loss
         }
 
         def func(x: torch.Tensor) -> torch.Tensor:

@@ -5,6 +5,7 @@ with learnable parameters.
 """
 
 import logging
+from pathlib import Path
 from typing import TypeVar
 
 import torch
@@ -39,12 +40,19 @@ class NetworkGenerator(nn.Module):
 
         # Initialize learnable parameters
         # We use nn.Parameter to automatically track gradients
-        self.alpha = nn.Parameter(torch.randn(self.M) / torch.sqrt(torch.tensor(self.M)))
+        # Using double precision for gradient checking
+        self.alpha = nn.Parameter(
+            torch.randn(self.M, dtype=torch.float64) / torch.sqrt(torch.tensor(self.M))
+        )
 
         # Initialize U and V matrices for each component
         # Using Xavier/Glorot initialization for better gradient flow
-        self.U = nn.Parameter(torch.randn(self.M, self.N) / torch.sqrt(torch.tensor(self.N)))
-        self.V = nn.Parameter(torch.randn(self.M, self.N) / torch.sqrt(torch.tensor(self.N)))
+        self.U = nn.Parameter(
+            torch.randn(self.M, self.N, dtype=torch.float64) / torch.sqrt(torch.tensor(self.N))
+        )
+        self.V = nn.Parameter(
+            torch.randn(self.M, self.N, dtype=torch.float64) / torch.sqrt(torch.tensor(self.N))
+        )
 
         logger.info(f"Initialized NetworkGenerator with N={self.N}, M={self.M}")
 
@@ -74,7 +82,7 @@ class NetworkGenerator(nn.Module):
         return self.compute_log_weights()
 
     @classmethod
-    def from_pretrained(cls: type[T], state_dict_path: str) -> T:
+    def from_pretrained(cls: type[T], state_dict_path: str | Path) -> T:
         """Create model from pretrained state dict.
 
         Args:
@@ -86,19 +94,13 @@ class NetworkGenerator(nn.Module):
         Raises:
             ValueError: If state dict is incompatible
         """
-        state_dict = torch.load(state_dict_path)
+        checkpoint = torch.load(state_dict_path)
+        state_dict = checkpoint["model_state_dict"]
+        config = checkpoint["config"]
 
-        # Extract N and M from state dict shapes
-        M = state_dict["alpha"].shape[0]
-        N = state_dict["U"].shape[1]
-
-        # Create config with minimal information needed for initialization
-        config = {"N": N, "M": M}
-
-        # Create model and load state dict
+        # Create model from config
         model = cls(config)
         model.load_state_dict(state_dict)
-
         return model
 
     def get_network_weights(self) -> torch.Tensor:

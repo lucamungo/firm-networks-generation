@@ -274,7 +274,7 @@ def compute_loss(
         M: Log-weight matrix of shape (N, N)
         config: Dictionary containing:
             - correlation_targets: Dict[str, float]
-            - hill_targets: Dict[str, float]
+            - hill_exponent_targets: Dict[str, float]
             - io_matrix_target: torch.Tensor
             - group_matrix: torch.Tensor
             - loss_weights: Dict[str, float]
@@ -290,7 +290,7 @@ def compute_loss(
     """
     # Extract parameters from config
     correlation_targets = config["correlation_targets"]
-    hill_targets = config["hill_targets"]
+    hill_targets = config["hill_exponent_targets"]
     io_target = config["io_matrix_target"]
     group_matrix = config["group_matrix"]
     weights = config["loss_weights"]
@@ -320,12 +320,14 @@ def compute_loss(
         smooth_scale = 1.0 + smoothness_loss.detach()
 
     # Combine normalized losses with weights
-    total_loss = (
+    weighted_loss = (
         weights["correlation"] * correlation_loss / corr_scale
         + weights["hill"] * hill_loss / hill_scale
         + weights["io"] * io_loss / io_scale
         + weights["smooth"] * smoothness_loss / smooth_scale
     )
+    weights_sum = sum(weights.values())
+    total_loss = weighted_loss / weights_sum
 
     # Collect all partial losses
     partial_losses = {

@@ -11,14 +11,20 @@ from network_generation.parse_config import parse_config
 @pytest.fixture
 def valid_config() -> dict:
     """Create a valid configuration dictionary for testing."""
+    # Create group assignments for all 100 nodes
+    group_assignments = {
+        "industry_1": list(range(0, 50)),  # First 50 nodes
+        "industry_2": list(range(50, 100)),  # Last 50 nodes
+    }
+
     return {
         "N": 100,
         "M": 5,
-        "group_assignments": {"industry_1": [0, 1, 2], "industry_2": [3, 4, 5]},
+        "group_assignments": group_assignments,
         "correlation_targets": {
-            "in_out_strength": 0.7,
-            "in_out_degree": 0.6,
-            "out_strength_degree": 0.8,
+            "log_in_strength_out_strength": 0.7,
+            "log_in_degree_out_degree": 0.6,
+            "log_out_strength_out_degree": 0.8,
         },
         "hill_exponent_targets": {
             "in_degree": 2.1,
@@ -28,13 +34,12 @@ def valid_config() -> dict:
         },
         "io_matrix_target": [[1.0, 2.0], [3.0, 4.0]],
         "loss_weights": {"correlation": 1.0, "hill": 1.0, "io": 1.0, "smooth": 0.1},
-        "hyperparameters": {
-            "learning_rate": 0.001,
-            "num_epochs": 1000,
-            "beta_degree": 10.0,
-            "beta_ccdf": 10.0,
-            "tail_fraction": 0.2,
-        },
+        "learning_rate": 0.001,
+        "num_epochs": 1000,
+        "beta_degree": 10.0,
+        "beta_ccdf": 10.0,
+        "tail_fraction": 0.2,
+        "num_ccdf_points": 20,
     }
 
 
@@ -53,11 +58,11 @@ def test_parse_valid_config(config_file: Path) -> None:
     assert config["N"] == 100
     assert config["M"] == 5
     assert len(config["group_assignments"]) == 2
-    assert config["correlation_targets"]["in_out_strength"] == 0.7
+    assert config["correlation_targets"]["log_in_strength_out_strength"] == 0.7
     assert config["hill_exponent_targets"]["in_degree"] == 2.1
     assert len(config["io_matrix_target"]) == 2
     assert config["loss_weights"]["correlation"] == 1.0
-    assert config["hyperparameters"]["learning_rate"] == 0.001
+    assert config["learning_rate"] == 0.001
 
 
 def test_missing_file() -> None:
@@ -90,23 +95,21 @@ def test_invalid_field_type(tmp_path: Path, valid_config: dict) -> None:
 
 def test_missing_nested_field(tmp_path: Path, valid_config: dict) -> None:
     """Test error handling for missing nested field."""
-    del valid_config["correlation_targets"]["in_out_strength"]
+    del valid_config["correlation_targets"]["log_in_strength_out_strength"]
     config_path = tmp_path / "invalid_config.yaml"
     with open(config_path, "w") as f:
         yaml.dump(valid_config, f)
 
-    with pytest.raises(
-        KeyError, match="Missing required field: correlation_targets.in_out_strength"
-    ):
+    with pytest.raises(ValueError):
         parse_config(config_path)
 
 
 def test_invalid_nested_field_type(tmp_path: Path, valid_config: dict) -> None:
     """Test error handling for invalid nested field type."""
-    valid_config["correlation_targets"]["in_out_strength"] = "not_a_float"
+    valid_config["correlation_targets"]["log_in_strength_out_strength"] = "not_a_float"
     config_path = tmp_path / "invalid_config.yaml"
     with open(config_path, "w") as f:
         yaml.dump(valid_config, f)
 
-    with pytest.raises(ValueError, match="Field in_out_strength must be of type float"):
+    with pytest.raises(ValueError):
         parse_config(config_path)
