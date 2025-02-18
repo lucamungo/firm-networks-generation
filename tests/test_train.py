@@ -131,7 +131,7 @@ def test_training_improves_io_matrix(tiny_config: Path) -> None:
 
     # Train model with multiple attempts if needed
     max_attempts = 3
-    final_error = float('inf')
+    final_error = float("inf")
 
     for attempt in range(max_attempts):
         model, history = train_model(tiny_config)
@@ -146,7 +146,9 @@ def test_training_improves_io_matrix(tiny_config: Path) -> None:
                 io_matrix_final[i, j] = W_final[mask_i][:, mask_j].sum()
 
         # Compare with target to get final error
-        current_error = torch.abs(torch.log(io_matrix_final + 1e-8) - torch.log(target + 1e-8)).mean()
+        current_error = torch.abs(
+            torch.log(io_matrix_final + 1e-8) - torch.log(target + 1e-8)
+        ).mean()
 
         if current_error < initial_error:
             final_error = current_error
@@ -154,7 +156,7 @@ def test_training_improves_io_matrix(tiny_config: Path) -> None:
 
     # Error should decrease during training
     assert (
-            final_error < initial_error
+        final_error < initial_error
     ), f"IO matrix error increased from {initial_error:.4f} to {final_error:.4f}"
 
 

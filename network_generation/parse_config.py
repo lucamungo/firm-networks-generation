@@ -32,6 +32,7 @@ class NetworkConfig(TypedDict):
     beta_ccdf: float  # Softmax temperature for CCDF computation
     tail_fraction: float  # Fraction of tail to use for Hill exponent
     num_ccdf_points: int  # Number of points to use in CCDF computation
+    optimizer: dict[str, Any]  # Optimizer configuration
 
 
 def create_group_matrix(group_assignments: Dict[str, list[int]], N: int) -> torch.Tensor:
@@ -242,6 +243,26 @@ def parse_config(config_path: str | Path) -> NetworkConfig:
     config.setdefault(
         "beta_tail", config.get("beta_ccdf", 10.0)
     )  # Default to beta_ccdf if available
+
+    # Set default optimizer settings if not provided
+    default_optimizer_settings = {
+        "type": "adam",
+        "params": {
+            "lr": config.get("learning_rate", 0.01),
+            "scheduler": {
+                "type": "reduce_lr_on_plateau",
+                "params": {
+                    "mode": "min",
+                    "factor": 0.5,
+                    "patience": 50,
+                    "min_lr": 1e-6,
+                    "verbose": True,
+                },
+            },
+        },
+    }
+
+    config.setdefault("optimizer", default_optimizer_settings)
 
     # Validate the rest of the configuration
     validate_config(config)

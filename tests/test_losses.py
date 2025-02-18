@@ -348,18 +348,20 @@ class TestTotalLoss:
     def test_gradient(self, sample_matrix: torch.Tensor, sample_config: dict) -> None:
         """Test gradient computation using finite differences."""
         M = sample_matrix.clone()
+        M = M / (M.std() + 1e-8)
 
         # Create a more numerically stable version of the config
         stable_config = sample_config.copy()
         stable_config["beta_tail"] = 1.0
+        stable_config["beta_degree"] = 0.1
         stable_config["num_ccdf_points"] = 5
 
         # Reduce the weights of components relying on CCDF computation
         stable_config["loss_weights"] = {
             "correlation": 1.0,
-            "hill": 0.1,  # Reduce weight of hill loss
+            "hill": 0.1,
             "io": 1.0,
-            "smooth": 1.0,  # Reduce weight of smoothness loss
+            "smooth": 1.0,
         }
 
         def func(x: torch.Tensor) -> torch.Tensor:

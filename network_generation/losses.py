@@ -9,7 +9,7 @@ from typing import Dict, Tuple
 
 import torch
 
-from .hill_exponent import compute_ccdf_and_fit_tail, hill_loss_from_fit
+from .hill_exponent import compute_ccdf_and_fit_tail, compute_hill_exponent, hill_loss_from_fit
 from .stats import (
     compute_ccdf,
     compute_degrees,
@@ -92,16 +92,16 @@ def compute_hill_losses(
     eps: float = 1e-8,
 ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
     """
-    Compute Hill exponent loss terms.
+    Compute Hill exponent loss terms using direct Hill exponent computation.
 
     Args:
         M: Log-weight matrix of shape (N, N)
-        hill_targets: Dictionary mapping distribution names to target slopes
+        hill_targets: Dictionary mapping distribution names to target Hill exponents
         beta_degree: Temperature parameter for soft degree computation
-        beta_tail: Temperature parameter for CCDF computation
-        tail_fraction: Fraction of data to use for tail fitting
-        num_points: Number of points for CCDF evaluation
-        lambda_line: Weight for line deviation penalty
+        beta_tail: Temperature parameter for tail computation
+        tail_fraction: Fraction of data to use for tail computation
+        num_points: Unused parameter kept for backward compatibility
+        lambda_line: Unused parameter kept for backward compatibility
         eps: Small value for numerical stability
 
     Returns:
@@ -135,23 +135,25 @@ def compute_hill_losses(
             raise ValueError(f"Unknown Hill target: {name}")
 
         values = distributions[name]
-        slope, intercept, ss_res = compute_ccdf_and_fit_tail(
+        # Compute Hill exponent directly
+        hill_exponent = compute_hill_exponent(
             values,
             tail_fraction=tail_fraction,
-            num_points=num_points,
-            beta_ccdf=beta_tail,
+            beta_tail=beta_tail,
+            is_discrete=name.endswith("degree"),
+            temperature=0.05,  # Fixed temperature for stability
             eps=eps,
         )
 
-        loss = hill_loss_from_fit(slope, intercept, ss_res, target, lambda_line, eps)
+        # Compute loss as squared difference from target
+        loss = (hill_exponent - target) ** 2
         hill_losses[name] = loss
         total_loss = total_loss + loss
 
-        # Log the slope and loss
+        # Log the Hill exponent and loss
         logger.debug(
-            f"{name}: slope = {slope.item():.3f}, "
-            f"target = {target:.3f}, residuals = {ss_res.item():.3f}, "
-            f"loss = {loss.item():.3f}"
+            f"{name}: hill_exponent = {hill_exponent.item():.3f}, "
+            f"target = {target:.3f}, loss = {loss.item():.3f}"
         )
 
     return total_loss, hill_losses

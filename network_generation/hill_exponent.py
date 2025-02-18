@@ -17,6 +17,22 @@ def compute_ccdf_and_fit_tail(
     beta_ccdf: float,
     eps: float = 1e-8,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Compute CCDF and fit power-law tail using soft thresholding.
+
+    Args:
+        x_values: Input values [N]
+        tail_fraction: Fraction of data to use for tail computation
+        num_points: Number of points for CCDF evaluation
+        beta_ccdf: Temperature parameter for CCDF computation
+        eps: Small value for numerical stability
+
+    Returns:
+        Tuple containing:
+            - Fitted slope in log-log space
+            - Fitted intercept in log-log space
+            - Sum of squared residuals from the fit
+    """
     # Input validation
     if not isinstance(x_values, torch.Tensor):
         raise TypeError("x_values must be a torch.Tensor")
@@ -115,6 +131,20 @@ def compute_hill_exponent(
     temperature: float = 0.05,
     eps: float = 1e-8,
 ) -> torch.Tensor:
+    """
+    Compute Hill exponent using soft thresholding.
+
+    Args:
+        values: Input values [N]
+        tail_fraction: Fraction of data to use for tail computation
+        beta_tail: Temperature parameter for tail computation
+        is_discrete: Whether the values are discrete (e.g., degrees)
+        temperature: Temperature for soft thresholding
+        eps: Small value for numerical stability
+
+    Returns:
+        Estimated Hill exponent
+    """
     if not isinstance(values, torch.Tensor):
         raise TypeError("values must be a torch.Tensor")
     if values.dim() != 1:
@@ -122,22 +152,34 @@ def compute_hill_exponent(
     if not (0 < tail_fraction <= 1):
         raise ValueError("tail_fraction must be in (0, 1]")
 
-    # Get tail points
-    k = torch.quantile(values, tail_fraction)
+    # Ensure positive values for log computation
+    values = values.clamp(min=eps)
 
-    # Create soft mask
-    soft_mask = torch.sigmoid((values - k) / temperature)
+    # Sort values in descending order for proper tail computation
+    sorted_values, _ = torch.sort(values, descending=True)
 
-    # Calculate log ratios for all points
-    log_ratios = torch.log(values / k)
+    # Compute k as the number of tail samples
+    k = int(len(values) * tail_fraction)
+    if k < 2:
+        k = 2  # Need at least 2 points for estimation
 
-    # Apply soft mask to log ratios
-    masked_log_ratios = log_ratios * soft_mask
+    # Get threshold value (k-th largest value)
+    threshold = sorted_values[k - 1]
 
-    # Calculate effective sample size (sum of mask)
-    n_effective = soft_mask.sum()
+    # Compute soft mask using sigmoid
+    log_ratios = (torch.log(values) - torch.log(threshold)) / temperature
+    soft_mask = torch.sigmoid(beta_tail * log_ratios)
 
-    # Calculate hill exponent using effective sample size
-    hill_exponent = n_effective * (1 / masked_log_ratios.sum())
+    # Compute mean log excess for points above threshold
+    log_values = torch.log(values)
+    log_threshold = torch.log(threshold)
+    log_excesses = (log_values - log_threshold) * soft_mask
+
+    # Sum of soft mask gives effective sample size
+    n_eff = soft_mask.sum().clamp(min=eps)
+
+    # Compute Hill estimator as inverse of mean log excess
+    mean_log_excess = (log_excesses.sum() / n_eff).clamp(min=eps)
+    hill_exponent = 1.0 / mean_log_excess
 
     return hill_exponent
