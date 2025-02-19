@@ -125,14 +125,13 @@ def hill_loss_from_fit(
 
 def compute_hill_exponent(
     values: torch.Tensor,
-    tail_fraction: float = 0.3,
+    tail_fraction: float = 0.1,
     beta_tail: float = 1.0,
     is_discrete: bool = False,
-    temperature: float = 0.05,
+    temperature: float = 0.1,  # Increased default temperature
     eps: float = 1e-8,
 ) -> torch.Tensor:
-    """
-    Compute Hill exponent using soft thresholding.
+    """Compute Hill exponent using soft thresholding.
 
     Args:
         values: Input values [N]
@@ -145,41 +144,49 @@ def compute_hill_exponent(
     Returns:
         Estimated Hill exponent
     """
+    if tail_fraction > 1 or tail_fraction <= 0:
+        raise ValueError("tail_fraction must be in (0, 1]")
     if not isinstance(values, torch.Tensor):
         raise TypeError("values must be a torch.Tensor")
     if values.dim() != 1:
         raise ValueError("values must be a 1D tensor")
-    if not (0 < tail_fraction <= 1):
-        raise ValueError("tail_fraction must be in (0, 1]")
+
+    # Normalize values to prevent numerical issues
+    values = values / values.max().clamp(min=eps)
 
     # Ensure positive values for log computation
     values = values.clamp(min=eps)
 
-    # Sort values in descending order for proper tail computation
+    # Sort values in descending order
     sorted_values, _ = torch.sort(values, descending=True)
 
     # Compute k as the number of tail samples
-    k = int(len(values) * tail_fraction)
-    if k < 2:
-        k = 2  # Need at least 2 points for estimation
+    k = max(int(len(values) * tail_fraction), 2)  # At least 2 points
 
     # Get threshold value (k-th largest value)
-    threshold = sorted_values[k - 1]
+    threshold = sorted_values[k - 1].clamp(min=eps)
 
-    # Compute soft mask using sigmoid
-    log_ratios = (torch.log(values) - torch.log(threshold)) / temperature
-    soft_mask = torch.sigmoid(beta_tail * log_ratios)
-
-    # Compute mean log excess for points above threshold
+    # Compute log values with numerical stability
     log_values = torch.log(values)
     log_threshold = torch.log(threshold)
+
+    # Normalize log ratios to prevent extreme values
+    log_ratios = (log_values - log_threshold) / temperature
+    log_ratios = log_ratios.clamp(min=-10, max=10)  # Prevent extreme values
+
+    # Compute soft mask using sigmoid
+    soft_mask = torch.sigmoid(beta_tail * log_ratios)
+
+    # Compute log excesses with numerical stability
     log_excesses = (log_values - log_threshold) * soft_mask
 
     # Sum of soft mask gives effective sample size
     n_eff = soft_mask.sum().clamp(min=eps)
 
-    # Compute Hill estimator as inverse of mean log excess
-    mean_log_excess = (log_excesses.sum() / n_eff).clamp(min=eps)
-    hill_exponent = 1.0 / mean_log_excess
+    # Compute mean log excess with clamping
+    mean_log_excess = (log_excesses.sum() / n_eff).clamp(min=eps, max=100)
+
+    # Compute Hill estimator with bounds
+    hill_exponent = (1.0 / mean_log_excess).clamp(min=0.1, max=50.0)
 
     return hill_exponent

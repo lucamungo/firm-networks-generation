@@ -113,8 +113,8 @@ def compute_hill_losses(
     W = torch.exp(M)
 
     # Compute degrees and strengths
-    in_degrees = compute_degrees(W, beta_degree, dim=0)
-    out_degrees = compute_degrees(W, beta_degree, dim=1)
+    in_degrees = compute_degrees(W, beta_degree, dim=0, threshold=1e-1)
+    out_degrees = compute_degrees(W, beta_degree, dim=1, threshold=1e-1)
     in_strengths = compute_strengths(W, dim=0)
     out_strengths = compute_strengths(W, dim=1)
 
@@ -243,8 +243,10 @@ def compute_smoothness_loss(
     for name, values in distributions.items():
         # Generate threshold points
         # Use differentiable min and max:
-        t_min = torch.min(values)
-        t_max = torch.max(values)
+        # t_min = torch.min(values)
+        # t_max = torch.max(values)
+        t_min = 1.0
+        t_max = values.sum()
         # Create a linearly spaced tensor in [0, 1]
         t = torch.linspace(0, 1, num_points, device=M.device, dtype=values.dtype)
         # Compute thresholds as a linear interpolation between t_min and t_max.

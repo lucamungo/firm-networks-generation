@@ -134,7 +134,11 @@ def compute_io_matrix(
 
 
 def compute_ccdf(
-    values: torch.Tensor, thresholds: torch.Tensor, beta: float, eps: float = 1e-8
+    values: torch.Tensor,
+    thresholds: torch.Tensor,
+    beta: float,
+    eps: float = 1e-8,
+    use_adaptive_beta: bool = True,
 ) -> torch.Tensor:
     """
     Compute complementary cumulative distribution function (CCDF) using adaptive soft thresholding.
@@ -143,6 +147,7 @@ def compute_ccdf(
         values: Input values [N]
         thresholds: Points at which to evaluate CCDF [M]
         beta: Base temperature parameter for soft thresholding
+        use_adaptive_beta: Use adaptive temperature based on spread of log-ratios
         eps: Small value for numerical stability
 
     Returns:
@@ -162,9 +167,12 @@ def compute_ccdf(
     log_ratios = log_x.unsqueeze(0) - log_t.unsqueeze(1)
 
     # Scale beta inversely with the spread of log-ratios to maintain good gradient
-    log_ratio_std = log_ratios.std()
-    if log_ratio_std > 0:
-        adaptive_beta = beta / log_ratio_std.clamp(min=eps)
+    if use_adaptive_beta:
+        log_ratio_std = log_ratios.std()
+        if log_ratio_std > 0:
+            adaptive_beta = beta / log_ratio_std.clamp(min=eps)
+        else:
+            adaptive_beta = beta
     else:
         adaptive_beta = beta
 
@@ -178,7 +186,10 @@ def compute_ccdf(
 
 
 def compute_smoothness_penalty(
-    ccdf_values: torch.Tensor, thresholds: torch.Tensor, eps: float = 1e-8
+    ccdf_values: torch.Tensor,
+    thresholds: torch.Tensor,
+    remove_mean_dt: bool = True,
+    eps: float = 1e-8,
 ) -> torch.Tensor:
     """
     Compute smoothness penalty based on second derivative of log-CCDF.
@@ -186,6 +197,7 @@ def compute_smoothness_penalty(
     Args:
         ccdf_values: CCDF values at each threshold, shape (K,)
         thresholds: Points at which CCDF was evaluated, shape (K,)
+        remove_mean_dt: Whether to divide by mean dt
         eps: Small value to add for numerical stability
 
     Returns:
@@ -208,16 +220,22 @@ def compute_smoothness_penalty(
     dt = log_t[1:] - log_t[:-1]  # Shape: (K-1,)
     dy = log_ccdf[1:] - log_ccdf[:-1]  # Shape: (K-1,)
 
-    # Compute first derivative (normalized by mean spacing for scale invariance)
-    mean_dt = torch.mean(dt)
-    first_deriv = dy / (dt + eps) * mean_dt  # Shape: (K-1,)
+    # First derivative
+    if remove_mean_dt:
+        first_deriv = dy / (dt + eps)
+    else:
+        mean_dt = torch.mean(dt)
+        first_deriv = dy / (dt + eps) * mean_dt
 
-    # Compute second differences
-    d2y = first_deriv[1:] - first_deriv[:-1]  # Shape: (K-2,)
-    dt2 = dt[1:]  # Shape: (K-2,)
+    # Second differences
+    d2y = first_deriv[1:] - first_deriv[:-1]  # (K-2,)
+    dt2 = dt[1:]  # (K-2,)
 
-    # Compute second derivative (normalized by mean spacing for scale invariance)
-    second_deriv = d2y / (dt2 + eps) * mean_dt
+    if remove_mean_dt:
+        second_deriv = d2y / (dt2 + eps)
+    else:
+        mean_dt = torch.mean(dt)
+        second_deriv = d2y / (dt2 + eps) * mean_dt
 
     # Return sum of squared second derivatives as smoothness penalty
     return torch.mean(second_deriv * second_deriv)
