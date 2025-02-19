@@ -26,7 +26,9 @@ class NetworkGenerator(nn.Module):
     The actual network weights are obtained as W_ij = exp(M_ij).
     """
 
-    def __init__(self, config: NetworkConfig) -> None:
+    def __init__(
+        self, config: NetworkConfig, normalize: bool = True, loc: float = 0, std: float = 1.0
+    ) -> None:
         """Initialize network generator.
 
         Args:
@@ -46,13 +48,14 @@ class NetworkGenerator(nn.Module):
         )
 
         # Initialize U and V matrices for each component
-        # Using Xavier/Glorot initialization for better gradient flow
-        self.U = nn.Parameter(
-            torch.randn(self.M, self.N, dtype=torch.float64) / torch.sqrt(torch.tensor(self.N))
-        )
-        self.V = nn.Parameter(
-            torch.randn(self.M, self.N, dtype=torch.float64) / torch.sqrt(torch.tensor(self.N))
-        )
+
+        self.U = nn.Parameter(torch.randn(self.M, self.N, dtype=torch.float64) * std + loc)
+        self.V = nn.Parameter(torch.randn(self.M, self.N, dtype=torch.float64) * std + loc)
+
+        if normalize:
+            # Xavier/Glorot initialization for better gradient flow
+            self.U = nn.Parameter(self.U / torch.norm(self.U, dim=1).unsqueeze(1))
+            self.V = nn.Parameter(self.V / torch.norm(self.V, dim=1).unsqueeze(1))
 
         logger.info(f"Initialized NetworkGenerator with N={self.N}, M={self.M}")
 

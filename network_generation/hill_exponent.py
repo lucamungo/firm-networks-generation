@@ -187,6 +187,6 @@ def compute_hill_exponent(
     mean_log_excess = (log_excesses.sum() / n_eff).clamp(min=eps, max=100)
 
     # Compute Hill estimator with bounds
-    hill_exponent = (1.0 / mean_log_excess).clamp(min=0.1, max=50.0)
+    hill_exponent = (1.0 / mean_log_excess).clamp(min=0.1, max=200.0)
 
     return hill_exponent

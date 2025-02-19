@@ -199,9 +199,20 @@ def train_model_progressive(
     progress_bar = tqdm(total=total_epochs, desc="Training")
     current_epoch = 0
 
+    # Create optimizer
+    optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"])
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=0.75,
+        patience=50,
+        min_lr=1e-6,
+        threshold=1e-4,
+        threshold_mode="rel",
+    )
+
     # Training cycles
     for cycle in range(num_cycles):
-        cycle_lr = base_lr * (0.5**cycle)
 
         for phase_idx, phase in enumerate(phases):
             # Create phase config
@@ -209,18 +220,6 @@ def train_model_progressive(
             phase_weights = {k: 0.0 for k in config["loss_weights"].keys()}
             phase_weights.update(phase["weights"])
             phase_config["loss_weights"] = phase_weights
-
-            # Create optimizer
-            optimizer = optim.Adam(model.parameters(), lr=cycle_lr)
-            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer,
-                mode="min",
-                factor=0.5,
-                patience=20,
-                min_lr=1e-6,
-                threshold=1e-4,
-                threshold_mode="rel",
-            )
 
             # Training loop
             for epoch in range(phase["epochs"]):

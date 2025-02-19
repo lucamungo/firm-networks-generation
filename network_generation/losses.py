@@ -246,7 +246,7 @@ def compute_smoothness_loss(
         # t_min = torch.min(values)
         # t_max = torch.max(values)
         t_min = 1.0
-        t_max = values.sum()
+        t_max = 1e3
         # Create a linearly spaced tensor in [0, 1]
         t = torch.linspace(0, 1, num_points, device=M.device, dtype=values.dtype)
         # Compute thresholds as a linear interpolation between t_min and t_max.
@@ -257,6 +257,8 @@ def compute_smoothness_loss(
 
         # Compute smoothness penalty
         loss = compute_smoothness_penalty(ccdf_values, thresholds, eps)
+        # Penalize uniform values
+        loss = loss / values.std()
         smoothness_losses[name] = loss
         total_loss = total_loss + loss
 
