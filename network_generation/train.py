@@ -192,7 +192,6 @@ def train_model_progressive(
 
     best_loss = float("inf")
     best_state_dict = None
-    base_lr = config["learning_rate"]
 
     # Calculate total epochs
     total_epochs = sum(phase["epochs"] for phase in phases) * num_cycles

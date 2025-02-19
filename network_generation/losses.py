@@ -7,7 +7,9 @@ them into a single differentiable loss for network generation.
 import logging
 from typing import Dict, Tuple
 
+import numpy as np
 import torch
+from torch.nn.functional import threshold_
 
 from .hill_exponent import compute_ccdf_and_fit_tail, compute_hill_exponent, hill_loss_from_fit
 from .stats import (
@@ -87,6 +89,7 @@ def compute_hill_losses(
     beta_degree: float,
     beta_tail: float,
     tail_fraction: float,
+    threshold_degree: float = 1e-5,
     num_points: int = 20,
     lambda_line: float = 0.1,
     eps: float = 1e-8,
@@ -100,6 +103,7 @@ def compute_hill_losses(
         beta_degree: Temperature parameter for soft degree computation
         beta_tail: Temperature parameter for tail computation
         tail_fraction: Fraction of data to use for tail computation
+        threshold_degree: Threshold for degree computation
         num_points: Unused parameter kept for backward compatibility
         lambda_line: Unused parameter kept for backward compatibility
         eps: Small value for numerical stability
@@ -113,8 +117,8 @@ def compute_hill_losses(
     W = torch.exp(M)
 
     # Compute degrees and strengths
-    in_degrees = compute_degrees(W, beta_degree, dim=0, threshold=1e-1)
-    out_degrees = compute_degrees(W, beta_degree, dim=1, threshold=1e-1)
+    in_degrees = compute_degrees(W, beta_degree, threshold=threshold_degree, dim=0)
+    out_degrees = compute_degrees(W, beta_degree, threshold=threshold_degree, dim=1)
     in_strengths = compute_strengths(W, dim=0)
     out_strengths = compute_strengths(W, dim=1)
 
@@ -248,9 +252,13 @@ def compute_smoothness_loss(
         t_min = 1.0
         t_max = 1e3
         # Create a linearly spaced tensor in [0, 1]
-        t = torch.linspace(0, 1, num_points, device=M.device, dtype=values.dtype)
-        # Compute thresholds as a linear interpolation between t_min and t_max.
-        thresholds = t_min + (t_max - t_min) * t
+        # t = torch.linspace(0, 1, num_points, device=M.device, dtype=values.dtype)
+        # # Compute thresholds as a linear interpolation between t_min and t_max.
+        # thresholds = t_min + (t_max - t_min) * t
+        # Generate logspace thresholds based on t_min and t_max, using torch.logspace
+        thresholds = torch.logspace(
+            np.log10(t_min), np.log10(t_max), num_points, device=M.device, dtype=values.dtype
+        )
 
         # Compute CCDF
         ccdf_values = compute_ccdf(values, thresholds, beta_ccdf, eps)
@@ -301,6 +309,7 @@ def compute_loss(
     group_matrix = config["group_matrix"]
     weights = config["loss_weights"]
     beta_degree = config["beta_degree"]
+    threshold_degree = config.get("threshold_degree", 1e-1)
     beta_tail = config["beta_tail"]
     tail_fraction = config["tail_fraction"]
     num_points = config.get("num_ccdf_points", 20)
@@ -311,7 +320,15 @@ def compute_loss(
         M, correlation_targets, beta_degree, eps
     )
     hill_loss, hill_losses = compute_hill_losses(
-        M, hill_targets, beta_degree, beta_tail, tail_fraction, num_points, lambda_line, eps
+        M=M,
+        hill_targets=hill_targets,
+        beta_degree=beta_degree,
+        threshold_degree=threshold_degree,
+        beta_tail=beta_tail,
+        tail_fraction=tail_fraction,
+        num_points=num_points,
+        lambda_line=lambda_line,
+        eps=eps,
     )
     io_loss = compute_io_loss(M, group_matrix, io_target, eps)
     smoothness_loss, smooth_losses = compute_smoothness_loss(
