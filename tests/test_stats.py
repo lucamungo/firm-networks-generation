@@ -210,7 +210,7 @@ class TestComputeStrengths:
 
     def test_out_strengths(self, sample_matrix: torch.Tensor) -> None:
         """Test computation of out-strengths."""
-        strengths = compute_strengths(sample_matrix, dim=1)
+        strengths = compute_strengths(sample_matrix, beta=10, dim=1)
         expected = torch.tensor([5.0, 10.0, 15.0]) + 1e-8  # Row sums
         assert torch.allclose(strengths, expected)
 

@@ -5,16 +5,16 @@ them into a single differentiable loss for network generation.
 """
 
 import logging
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import torch
-from torch.nn.functional import threshold_
 
 from .hill_exponent import compute_ccdf_and_fit_tail, compute_hill_exponent, hill_loss_from_fit
 from .stats import (
     compute_ccdf,
     compute_degrees,
+    compute_density,
     compute_io_matrix,
     compute_log_correlation,
     compute_smoothness_penalty,
@@ -28,6 +28,7 @@ def compute_correlation_loss(
     M: torch.Tensor,
     correlation_targets: Dict[str, float],
     beta_degree: float,
+    threshold_degree: float = 1e-5,
     eps: float = 1e-8,
 ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
     """
@@ -37,6 +38,7 @@ def compute_correlation_loss(
         M: Log-weight matrix of shape (N, N)
         correlation_targets: Dictionary mapping correlation names to target values
         beta_degree: Temperature parameter for soft degree computation
+        threshold_degree: Threshold for degree computation
         eps: Small value for numerical stability
 
     Returns:
@@ -48,10 +50,10 @@ def compute_correlation_loss(
     W = torch.exp(M)
 
     # Compute degrees and strengths
-    in_degrees = compute_degrees(W, beta_degree, dim=0)
-    out_degrees = compute_degrees(W, beta_degree, dim=1)
-    in_strengths = compute_strengths(W, dim=0)
-    out_strengths = compute_strengths(W, dim=1)
+    in_degrees = compute_degrees(W, beta_degree, dim=0, threshold=threshold_degree)
+    out_degrees = compute_degrees(W, beta_degree, dim=1, threshold=threshold_degree)
+    in_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold_degree, dim=0)
+    out_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold_degree, dim=1)
 
     # Initialize losses
     correlation_losses = {}
@@ -119,8 +121,8 @@ def compute_hill_losses(
     # Compute degrees and strengths
     in_degrees = compute_degrees(W, beta_degree, threshold=threshold_degree, dim=0)
     out_degrees = compute_degrees(W, beta_degree, threshold=threshold_degree, dim=1)
-    in_strengths = compute_strengths(W, dim=0)
-    out_strengths = compute_strengths(W, dim=1)
+    in_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold_degree, dim=0)
+    out_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold_degree, dim=1)
 
     # Initialize losses
     hill_losses = {}
@@ -132,6 +134,13 @@ def compute_hill_losses(
         "out_degree": out_degrees,
         "in_strength": in_strengths,
         "out_strength": out_strengths,
+    }
+
+    weights = {
+        "in_degree": 1.0,
+        "out_degree": 1.0,
+        "in_strength": 1.0,
+        "out_strength": 1.0,
     }
 
     for name, target in hill_targets.items():
@@ -152,7 +161,7 @@ def compute_hill_losses(
         # Compute loss as squared difference from target
         loss = (hill_exponent - target) ** 2
         hill_losses[name] = loss
-        total_loss = total_loss + loss
+        total_loss = total_loss + weights[name] * loss
 
         # Log the Hill exponent and loss
         logger.debug(
@@ -205,6 +214,7 @@ def compute_smoothness_loss(
     M: torch.Tensor,
     beta_degree: float,
     beta_ccdf: float,
+    threshold_degree: float = 1e-5,
     num_points: int = 20,
     eps: float = 1e-8,
 ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -215,6 +225,7 @@ def compute_smoothness_loss(
         M: Log-weight matrix of shape (N, N)
         beta_degree: Temperature parameter for soft degree computation
         beta_ccdf: Temperature parameter for CCDF computation
+        threshold_degree: Threshold for degree computation
         num_points: Number of points for CCDF evaluation
         eps: Small value for numerical stability
 
@@ -227,10 +238,10 @@ def compute_smoothness_loss(
     W = torch.exp(M)
 
     # Compute degrees and strengths
-    in_degrees = compute_degrees(W, beta_degree, dim=0)
-    out_degrees = compute_degrees(W, beta_degree, dim=1)
-    in_strengths = compute_strengths(W, dim=0)
-    out_strengths = compute_strengths(W, dim=1)
+    in_degrees = compute_degrees(W, beta_degree, dim=0, threshold=threshold_degree)
+    out_degrees = compute_degrees(W, beta_degree, dim=1, threshold=threshold_degree)
+    in_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold_degree, dim=0)
+    out_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold_degree, dim=1)
 
     # Initialize losses
     smoothness_losses = {}
@@ -266,7 +277,7 @@ def compute_smoothness_loss(
         # Compute smoothness penalty
         loss = compute_smoothness_penalty(ccdf_values, thresholds, eps)
         # Penalize uniform values
-        loss = loss / values.std()
+        loss = loss / torch.log(values).std()
         smoothness_losses[name] = loss
         total_loss = total_loss + loss
 
@@ -274,6 +285,84 @@ def compute_smoothness_loss(
         logger.debug(f"{name} smoothness loss = {loss.item():.3f}")
 
     return total_loss, smoothness_losses
+
+
+def compute_sparsity_loss(
+    W: torch.Tensor,
+    target_sparsity: Optional[float],
+    beta: float,
+    threshold: float = 1e-5,
+    eps: float = 1e-8,
+) -> torch.Tensor:
+    """
+    Computes the discrepancy between the matrix's sparsity and a target sparsity.
+    """
+    if target_sparsity is None:
+        return torch.tensor(0.0, device=W.device)
+
+    sparsity = compute_density(W, beta, threshold, eps)
+
+    # Compute loss as squared difference from target
+    loss = (sparsity - target_sparsity) ** 2
+
+    # Log the sparsity and loss
+    logger.debug(
+        f"Sparsity = {sparsity.item():.3f}, target = {target_sparsity:.3f}, loss = {loss.item():.3f}"
+    )
+
+    return loss
+
+
+def compute_continuity_loss(
+    M: torch.Tensor,
+    beta_degree: float,
+    threshold_degree: float = 1e-5,
+    eps: float = 1e-8,
+) -> torch.Tensor:
+    """
+    Compute continuity loss of a 1D tensor.
+
+    Args:
+        values: Input values [N]
+        eps: Small value for numerical stability
+
+    Returns:
+        Loss value
+    """
+    # Get weight matrix
+    W = torch.exp(M)
+
+    # Compute degrees and strengths
+    in_degrees = compute_degrees(W, beta_degree, dim=0, threshold=threshold_degree)
+    out_degrees = compute_degrees(W, beta_degree, dim=1, threshold=threshold_degree)
+    in_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold_degree, dim=0)
+    out_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold_degree, dim=1)
+
+    # Initialize losses
+    total_loss = torch.tensor(0.0, device=M.device)
+
+    # Map names to values
+    distributions = {
+        "in_degree": in_degrees,
+        "out_degree": out_degrees,
+        "in_strength": in_strengths,
+        "out_strength": out_strengths,
+    }
+
+    for name, values in distributions.items():
+        if not isinstance(values, torch.Tensor):
+            raise TypeError("values must be torch.Tensor")
+
+        if values.dim() != 1:
+            raise ValueError("values must be a 1D tensor")
+
+        # Compute first differences
+        dy = values[1:] - values[:-1]  # Shape: (K-1,)
+
+        # Compute sum of squared first differences
+        total_loss += torch.sum(dy * dy) / dy.std()
+
+    return total_loss
 
 
 def compute_loss(
@@ -314,11 +403,23 @@ def compute_loss(
     tail_fraction = config["tail_fraction"]
     num_points = config.get("num_ccdf_points", 20)
     lambda_line = config.get("lambda_line", 0.1)
+    target_sparsity = config.get("density_target", None)
+
+    if "density" not in weights:
+        weights["density"] = 0.0
+
+    if "continuity" not in weights:
+        weights["continuity"] = 0.0
 
     # Compute partial losses
     correlation_loss, corr_losses = compute_correlation_loss(
-        M, correlation_targets, beta_degree, eps
+        M=M,
+        correlation_targets=correlation_targets,
+        beta_degree=beta_degree,
+        threshold_degree=threshold_degree,
+        eps=eps,
     )
+
     hill_loss, hill_losses = compute_hill_losses(
         M=M,
         hill_targets=hill_targets,
@@ -330,9 +431,28 @@ def compute_loss(
         lambda_line=lambda_line,
         eps=eps,
     )
+
     io_loss = compute_io_loss(M, group_matrix, io_target, eps)
+
     smoothness_loss, smooth_losses = compute_smoothness_loss(
-        M, beta_degree, beta_tail, num_points, eps
+        M=M,
+        beta_degree=beta_degree,
+        beta_ccdf=beta_tail,
+        threshold_degree=threshold_degree,
+        num_points=num_points,
+        eps=eps,
+    )
+
+    density_loss = compute_sparsity_loss(
+        M,
+        target_sparsity=target_sparsity,
+        beta=beta_degree,
+        threshold=threshold_degree,
+        eps=1e-8,
+    )
+
+    continuity_loss = compute_continuity_loss(
+        M, beta_degree=beta_degree, threshold_degree=threshold_degree, eps=1e-8
     )
 
     # Use more stable normalization
@@ -341,6 +461,8 @@ def compute_loss(
         hill_scale = 1.0 + hill_loss.detach()
         io_scale = 1.0 + io_loss.detach()
         smooth_scale = 1.0 + smoothness_loss.detach()
+        density_scale = 1.0 + density_loss.detach()
+        continuity_scale = 1.0 + continuity_loss.detach()
 
     # Combine normalized losses with weights
     weighted_loss = (
@@ -348,6 +470,8 @@ def compute_loss(
         + weights["hill"] * hill_loss / hill_scale
         + weights["io"] * io_loss / io_scale
         + weights["smooth"] * smoothness_loss / smooth_scale
+        + weights["density"] * density_loss / density_scale
+        + weights["continuity"] * continuity_loss / continuity_scale
     )
     weights_sum = sum(weights.values())
     total_loss = weighted_loss / weights_sum
@@ -358,6 +482,7 @@ def compute_loss(
         "hill": hill_loss,
         "io": io_loss,
         "smooth": smoothness_loss,
+        "density": density_loss,
         **{f"correlation_{k}": v for k, v in corr_losses.items()},
         **{f"hill_{k}": v for k, v in hill_losses.items()},
         **{f"smooth_{k}": v for k, v in smooth_losses.items()},
@@ -370,6 +495,7 @@ def compute_loss(
         f"hill = {hill_loss.item():.3f}, "
         f"io = {io_loss.item():.3f}, "
         f"smooth = {smoothness_loss.item():.3f})"
+        f"density = {density_loss.item():.3f}"
     )
 
     return total_loss, partial_losses

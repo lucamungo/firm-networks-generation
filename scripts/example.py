@@ -12,6 +12,7 @@ from network_generation.losses import compute_loss
 from network_generation.model import NetworkGenerator
 from network_generation.stats import (
     compute_degrees,
+    compute_density,
     compute_io_matrix,
     compute_log_correlation,
     compute_strengths,
@@ -21,111 +22,178 @@ from network_generation.train import train_model, train_model_progressive
 setup_matplotlib()
 
 
-def plot_distributions(W_original, W_generated, W_initial=None, beta_degree=10.0):
-    """Plot degree and strength distributions for original, initial, and generated networks.
-
-    Args:
-        W_original: Original network weight matrix
-        W_generated: Generated network weight matrix after training
-        W_initial: Initial network weight matrix before training (optional)
-        beta_degree: Temperature parameter for soft degree computation
-    """
-
+def plot_distributions(
+    W_original,
+    W_generated,
+    W_initial=None,
+    beta_degree=10.0,
+    threshold_degree: float = 1e-1,
+    tail_fraction: float = 0.05,
+):
+    """Plot degree and strength distributions for original, initial, and generated networks."""
     # Create figure with 2x2 subplots
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
     fig.suptitle("Network Distributions Comparison", fontsize=14)
 
-    # Compute distributions for original network
-    in_degrees_orig = compute_degrees(W_original, beta_degree, dim=0).detach().numpy()
-    out_degrees_orig = compute_degrees(W_original, beta_degree, dim=1).detach().numpy()
-    in_strengths_orig = compute_strengths(W_original, dim=0).detach().numpy()
-    out_strengths_orig = compute_strengths(W_original, dim=1).detach().numpy()
-
-    # Compute distributions for generated network
-    in_degrees_gen = compute_degrees(W_generated, beta_degree, dim=0).detach().numpy()
-    out_degrees_gen = compute_degrees(W_generated, beta_degree, dim=1).detach().numpy()
-    in_strengths_gen = compute_strengths(W_generated, dim=0).detach().numpy()
-    out_strengths_gen = compute_strengths(W_generated, dim=1).detach().numpy()
-
-    # If initial network is provided, compute its distributions
-    if W_initial is not None:
-        in_degrees_init = compute_degrees(W_initial, beta_degree, dim=0).detach().numpy()
-        out_degrees_init = compute_degrees(W_initial, beta_degree, dim=1).detach().numpy()
-        in_strengths_init = compute_strengths(W_initial, dim=0).detach().numpy()
-        out_strengths_init = compute_strengths(W_initial, dim=1).detach().numpy()
-
-    # Function to create CCDF
+    # Function to create CCDF and find threshold point
     def compute_ccdf_numpy(values):
         sorted_values = np.sort(values)
         p = 1 - np.arange(len(sorted_values)) / len(sorted_values)
-        return sorted_values, p
 
-    # Plot in-degree distribution
-    ax = axes[0, 0]
-    x_orig, y_orig = compute_ccdf_numpy(in_degrees_orig)
-    x_gen, y_gen = compute_ccdf_numpy(in_degrees_gen)
-    ax.loglog(x_orig, y_orig, "b-", label="Original")
-    ax.loglog(x_gen, y_gen, "r--", label="Generated")
-    if W_initial is not None:
-        x_init, y_init = compute_ccdf_numpy(in_degrees_init)
-        ax.loglog(x_init, y_init, "g:", label="Initial")
-    ax.set_xlabel("In-degree")
-    ax.set_ylabel("CCDF")
-    ax.set_title("In-degree Distribution")
-    ax.grid(True, which="both", ls="-", alpha=0.2)
-    ax.legend()
+        # Calculate the index corresponding to the tail fraction
+        k = max(int(len(values) * tail_fraction), 2)
+        threshold_idx = len(values) - k
+        threshold_value = sorted_values[threshold_idx]
+        threshold_p = p[threshold_idx]
 
-    # Plot out-degree distribution
-    ax = axes[0, 1]
-    x_orig, y_orig = compute_ccdf_numpy(out_degrees_orig)
-    x_gen, y_gen = compute_ccdf_numpy(out_degrees_gen)
-    ax.loglog(x_orig, y_orig, "b-", label="Original")
-    ax.loglog(x_gen, y_gen, "r--", label="Generated")
-    if W_initial is not None:
-        x_init, y_init = compute_ccdf_numpy(out_degrees_init)
-        ax.loglog(x_init, y_init, "g:", label="Initial")
-    ax.set_xlabel("Out-degree")
-    ax.set_ylabel("CCDF")
-    ax.set_title("Out-degree Distribution")
-    ax.grid(True, which="both", ls="-", alpha=0.2)
-    ax.legend()
+        return sorted_values, p, threshold_value, threshold_p
 
-    # Plot in-strength distribution
-    ax = axes[1, 0]
-    x_orig, y_orig = compute_ccdf_numpy(in_strengths_orig)
-    x_gen, y_gen = compute_ccdf_numpy(in_strengths_gen)
-    ax.loglog(x_orig, y_orig, "b-", label="Original")
-    ax.loglog(x_gen, y_gen, "r--", label="Generated")
-    if W_initial is not None:
-        x_init, y_init = compute_ccdf_numpy(in_strengths_init)
-        ax.loglog(x_init, y_init, "g:", label="Initial")
-    ax.set_xlabel("In-strength")
-    ax.set_ylabel("CCDF")
-    ax.set_title("In-strength Distribution")
-    ax.grid(True, which="both", ls="-", alpha=0.2)
-    ax.legend()
+    # Compute distributions with Hill thresholds
+    # Original network distributions
+    in_degrees_orig = (W_original > 0).sum(dim=0).detach().numpy()
+    out_degrees_orig = (W_original > 0).sum(dim=1).detach().numpy()
+    in_strengths_orig = compute_strengths(W_original, dim=0).detach().numpy()
+    out_strengths_orig = compute_strengths(W_original, dim=1).detach().numpy()
 
-    # Plot out-strength distribution
-    ax = axes[1, 1]
-    x_orig, y_orig = compute_ccdf_numpy(out_strengths_orig)
-    x_gen, y_gen = compute_ccdf_numpy(out_strengths_gen)
-    ax.loglog(x_orig, y_orig, "b-", label="Original")
-    ax.loglog(x_gen, y_gen, "r--", label="Generated")
-    if W_initial is not None:
-        x_init, y_init = compute_ccdf_numpy(out_strengths_init)
-        ax.loglog(x_init, y_init, "g:", label="Initial")
-    ax.set_xlabel("Out-strength")
-    ax.set_ylabel("CCDF")
-    ax.set_title("Out-strength Distribution")
-    ax.grid(True, which="both", ls="-", alpha=0.2)
-    ax.legend()
+    # Generated network distributions
+    in_degrees_gen = (
+        compute_degrees(W=W_generated, beta_degree=beta_degree, threshold=threshold_degree, dim=0)
+        .detach()
+        .numpy()
+    )
+    out_degrees_gen = (
+        compute_degrees(W=W_generated, beta_degree=beta_degree, threshold=threshold_degree, dim=1)
+        .detach()
+        .numpy()
+    )
+    in_strengths_gen = (
+        compute_strengths(W_generated, beta=beta_degree, threshold=threshold_degree, dim=0)
+        .detach()
+        .numpy()
+    )
+    out_strengths_gen = (
+        compute_strengths(W_generated, beta=beta_degree, threshold=threshold_degree, dim=1)
+        .detach()
+        .numpy()
+    )
 
+    # Function to plot distribution with Hill threshold markers
+    def plot_dist(ax, orig_values, gen_values, init_values=None, title=""):
+        x_orig, y_orig, thresh_orig, p_orig = compute_ccdf_numpy(orig_values)
+        x_gen, y_gen, thresh_gen, p_gen = compute_ccdf_numpy(gen_values)
+
+        # Plot distributions
+        line1 = ax.loglog(x_orig, y_orig, "b-", label="Original")[0]
+        line2 = ax.loglog(x_gen, y_gen, "r--", label="Generated")[0]
+
+        # Plot Hill threshold points with markers
+        ax.plot(thresh_orig, p_orig, "x", color="gray", markersize=8)
+        ax.plot(thresh_gen, p_gen, "x", color="gray", markersize=8)
+
+        if init_values is not None:
+            x_init, y_init, thresh_init, p_init = compute_ccdf_numpy(init_values)
+            line3 = ax.loglog(x_init, y_init, "g:", label="Initial")[0]
+            ax.plot(thresh_init, p_init, "x", color="gray", markersize=8)
+
+        ax.set_title(title)
+        ax.grid(True, which="both", ls="-", alpha=0.2)
+        return line1, line2, line3 if init_values is not None else None
+
+    # Plot all distributions
+    lines = plot_dist(
+        axes[0, 0],
+        in_degrees_orig,
+        in_degrees_gen,
+        init_values=(
+            None
+            if W_initial is None
+            else compute_degrees(
+                W=W_initial, beta_degree=beta_degree, threshold=threshold_degree, dim=0
+            )
+            .detach()
+            .numpy()
+        ),
+        title="In-degree Distribution",
+    )
+    axes[0, 0].set_xlabel("In-degree")
+    axes[0, 0].set_ylabel("CCDF")
+
+    plot_dist(
+        axes[0, 1],
+        out_degrees_orig,
+        out_degrees_gen,
+        init_values=(
+            None
+            if W_initial is None
+            else compute_degrees(
+                W=W_initial, beta_degree=beta_degree, threshold=threshold_degree, dim=1
+            )
+            .detach()
+            .numpy()
+        ),
+        title="Out-degree Distribution",
+    )
+    axes[0, 1].set_xlabel("Out-degree")
+    axes[0, 1].set_ylabel("CCDF")
+
+    plot_dist(
+        axes[1, 0],
+        in_strengths_orig,
+        in_strengths_gen,
+        init_values=(
+            None
+            if W_initial is None
+            else compute_strengths(W_initial, beta=beta_degree, threshold=threshold_degree, dim=0)
+            .detach()
+            .numpy()
+        ),
+        title="In-strength Distribution",
+    )
+    axes[1, 0].set_xlabel("In-strength")
+    axes[1, 0].set_ylabel("CCDF")
+
+    plot_dist(
+        axes[1, 1],
+        out_strengths_orig,
+        out_strengths_gen,
+        init_values=(
+            None
+            if W_initial is None
+            else compute_strengths(W_initial, beta=beta_degree, threshold=threshold_degree, dim=1)
+            .detach()
+            .numpy()
+        ),
+        title="Out-strength Distribution",
+    )
+    axes[1, 1].set_xlabel("Out-strength")
+    axes[1, 1].set_ylabel("CCDF")
+
+    # Create a single legend at the bottom
+    lines_for_legend = [line for line in lines if line is not None]
+    # Add a dummy line for the threshold marker
+    threshold_marker = plt.Line2D(
+        [0], [0], color="gray", marker="x", linestyle="None", markersize=8, label="Hill threshold"
+    )
+    lines_for_legend.append(threshold_marker)
+
+    fig.legend(handles=lines_for_legend, loc="center", bbox_to_anchor=(0.5, 0.02), ncol=4)
+
+    # Adjust layout to make room for the legend
     plt.tight_layout()
+    plt.subplots_adjust(bottom=0.15)
+
     return fig
 
 
 def generate_plots(W_generated, W_original, W_initial, config, history):
-    fig = plot_distributions(W_original, W_generated, W_initial, beta_degree=config["beta_degree"])
+    fig = plot_distributions(
+        W_original,
+        W_generated,
+        W_initial,
+        beta_degree=config["beta_degree"],
+        threshold_degree=config["threshold_degree"],
+        tail_fraction=config["tail_fraction"],
+    )
     # Save plot
     plot_path = Path("./distributions.png")
     fig.savefig(plot_path, dpi=300, bbox_inches="tight")
@@ -262,18 +330,21 @@ def generate_synthetic_network(N=1000, density=0.1, mu=0.0, sigma=1.0):
     return weights
 
 
-def compute_network_properties(W, beta_degree=10.0, eps=1e-8):
+def compute_network_properties(
+    W, soft_approx: bool = True, beta_degree=10.0, threshold=1e-5, eps=1e-8
+):
     """Compute various network properties."""
     # Compute degrees and strengths
-    # in_degrees = compute_degrees(W, beta_degree, dim=0)
-    # out_degrees = compute_degrees(W, beta_degree, dim=1)
-    # in_strengths = compute_strengths(W, dim=0)
-    # out_strengths = compute_strengths(W, dim=1)
-
-    in_degrees = (W > 0).sum(dim=0)
-    out_degrees = (W > 0).sum(dim=1)
-    in_strengths = W.sum(dim=0)
-    out_strengths = W.sum(dim=1)
+    if soft_approx:
+        in_degrees = compute_degrees(W, beta_degree, threshold=threshold, dim=0)
+        out_degrees = compute_degrees(W, beta_degree, threshold=threshold, dim=1)
+        in_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold, dim=0)
+        out_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold, dim=1)
+    else:
+        in_degrees = (W > 0).sum(dim=0)
+        out_degrees = (W > 0).sum(dim=1)
+        in_strengths = W.sum(dim=0)
+        out_strengths = W.sum(dim=1)
 
     # Compute correlations
     corr_in_out_str = compute_log_correlation(in_strengths, out_strengths)
@@ -306,6 +377,9 @@ def compute_network_properties(W, beta_degree=10.0, eps=1e-8):
     # Compute IO matrix
     io_matrix = compute_io_matrix(W, group_matrix)
 
+    # Compute density
+    density = compute_density(W, beta=beta_degree, threshold=threshold, eps=eps)
+
     return {
         "correlations": {
             "log_in_strength_out_strength": float(corr_in_out_str),
@@ -319,6 +393,7 @@ def compute_network_properties(W, beta_degree=10.0, eps=1e-8):
             "out_strength": float(hill_out_strength),
         },
         "io_matrix": io_matrix.tolist(),
+        "density": float(density),
         "group_assignments": group_assignments,
     }
 
@@ -341,7 +416,7 @@ def create_config(properties, N, M=10, num_epochs=3000, num_cycles=1):
         group_matrix[int(i), firms] = 1
 
     # Calculate epochs per phase
-    num_phases = 5  # IO Matrix, Correlations, Hill Exponents, Smoothness, Fine Tuning
+    num_phases = 6  # Density, IO Matrix, Correlations, Hill Exponents, Smoothness, Fine Tuning
     epochs_per_phase = num_epochs // (num_phases * num_cycles)
 
     # Create config with tensor values converted to lists where needed
@@ -353,45 +428,107 @@ def create_config(properties, N, M=10, num_epochs=3000, num_cycles=1):
         "correlation_targets": properties["correlations"],
         "hill_exponent_targets": properties["hill_exponents"],
         "io_matrix_target": torch.tensor(properties["io_matrix"]),  # Convert back to tensor
+        "density_target": properties["density"],
         "loss_weights": {
             "correlation": 1.0,
             "hill": 1.0,
             "io": 5.0,
             "smooth": 1.0,
+            "density": 1.0,
+            "continuity": 1.0,
         },
         "training_phases": [
+            # {
+            #     "name": "Density",
+            #     "epochs": epochs_per_phase,
+            #     "weights": {
+            #         "correlation": 0.0,
+            #         "hill": 0.0,
+            #         "io": 0.01,
+            #         "smooth": 0.0,
+            #         "density": 1.0,
+            #     },
+            # },
             {
                 "name": "IO Matrix",
                 "epochs": epochs_per_phase,
-                "weights": {"correlation": 0.0, "hill": 0.0, "io": 1.0, "smooth": 0.0},
+                "weights": {
+                    "correlation": 0.0,
+                    "hill": 0.0,
+                    "io": 1.0,
+                    "smooth": 0.0,
+                    "density": 0.1,
+                    "continuity": 0.0,
+                },
             },
             {
                 "name": "Correlations",
                 "epochs": epochs_per_phase,
-                "weights": {"correlation": 1.0, "hill": 0.0, "io": 0.5, "smooth": 0.0},
+                "weights": {
+                    "correlation": 1.0,
+                    "hill": 0.0,
+                    "io": 0.5,
+                    "smooth": 0.0,
+                    "density": 0.1,
+                    "continuity": 0.0,
+                },
             },
             {
                 "name": "Hill Exponents",
                 "epochs": epochs_per_phase,
-                "weights": {"correlation": 0.5, "hill": 1.0, "io": 0.5, "smooth": 0.0},
+                "weights": {
+                    "correlation": 0.1,
+                    "hill": 1.0,
+                    "io": 0.5,
+                    "smooth": 0.0,
+                    "density": 0.1,
+                    "continuity": 0.0,
+                },
             },
             {
                 "name": "Smoothness",
                 "epochs": epochs_per_phase,
-                "weights": {"correlation": 0.1, "hill": 0.1, "io": 0.1, "smooth": 1.0},
+                "weights": {
+                    "correlation": 0.1,
+                    "hill": 0.1,
+                    "io": 0.1,
+                    "smooth": 1.0,
+                    "density": 0.1,
+                    "continuity": 0.0,
+                },
+            },
+            {
+                "name": "Continuity",
+                "epochs": epochs_per_phase,
+                "weights": {
+                    "continuity": 1.0,
+                    "correlation": 0.0,
+                    "hill": 0.0,
+                    "io": 0.01,
+                    "smooth": 0.0,
+                    "density": 1.0,
+                },
             },
             {
                 "name": "Fine Tuning",
                 "epochs": epochs_per_phase,
-                "weights": {"correlation": 1.0, "hill": 1.0, "io": 1.0, "smooth": 0.5},
+                "weights": {
+                    "correlation": 1.0,
+                    "hill": 1.0,
+                    "io": 1.0,
+                    "smooth": 1.0,
+                    "density": 0.1,
+                    "continuity": 0.0,
+                },
             },
         ],
         "learning_rate": 0.01,
         "num_epochs": num_epochs,
         "beta_degree": 5.0,
+        "threshold_degree": 0.5,
         "beta_ccdf": 5.0,
         "beta_tail": 10.0,
-        "tail_fraction": 0.1,
+        "tail_fraction": 0.05,
         "num_ccdf_points": 20,
     }
 
@@ -438,7 +575,7 @@ def main():
     W_original = generate_synthetic_network(N, density=sparsity)
 
     print("Step 2: Computing network properties...")
-    properties = compute_network_properties(W_original)
+    properties = compute_network_properties(W_original, soft_approx=False)
 
     print("\nStep 3: Creating configuration...")
     if args.progressive:
@@ -472,7 +609,12 @@ def main():
 
     print("\nStep 5: Evaluating results...")
     W_generated = model.get_network_weights()
-    final_properties = compute_network_properties(W_generated)
+    final_properties = compute_network_properties(
+        W_generated,
+        soft_approx=True,
+        beta_degree=config["beta_degree"],
+        threshold=config["threshold_degree"],
+    )
 
     # Compute final losses
     final_log_weights = model()

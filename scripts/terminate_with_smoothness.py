@@ -262,18 +262,21 @@ def generate_synthetic_network(N=1000, density=0.1, mu=0.0, sigma=1.0):
     return weights
 
 
-def compute_network_properties(W, beta_degree=10.0, eps=1e-8):
+def compute_network_properties(
+    W, soft_approx: bool = True, beta_degree=10.0, threshold=1e-5, eps=1e-8
+):
     """Compute various network properties."""
     # Compute degrees and strengths
-    # in_degrees = compute_degrees(W, beta_degree, dim=0)
-    # out_degrees = compute_degrees(W, beta_degree, dim=1)
-    # in_strengths = compute_strengths(W, dim=0)
-    # out_strengths = compute_strengths(W, dim=1)
-
-    in_degrees = (W > 0).sum(dim=0)
-    out_degrees = (W > 0).sum(dim=1)
-    in_strengths = W.sum(dim=0)
-    out_strengths = W.sum(dim=1)
+    if soft_approx:
+        in_degrees = compute_degrees(W, beta_degree, threshold=threshold, dim=0)
+        out_degrees = compute_degrees(W, beta_degree, threshold=threshold, dim=1)
+        in_strengths = compute_strengths(W, dim=0)
+        out_strengths = compute_strengths(W, dim=1)
+    else:
+        in_degrees = (W > 0).sum(dim=0)
+        out_degrees = (W > 0).sum(dim=1)
+        in_strengths = W.sum(dim=0)
+        out_strengths = W.sum(dim=1)
 
     # Compute correlations
     corr_in_out_str = compute_log_correlation(in_strengths, out_strengths)
@@ -323,15 +326,16 @@ def compute_network_properties(W, beta_degree=10.0, eps=1e-8):
     }
 
 
-def create_two_phase_config(properties, N, M=10, main_epochs=3000, smooth_epochs=1000):
-    """Create configuration dictionary for two-phase training.
+def create_configs(properties, N, M=10, main_epochs=3000, num_cycles=1, progressive=False):
+    """Create configuration dictionary.
 
     Args:
         properties: Network properties dictionary
         N: Number of nodes
         M: Number of components for factorization
         main_epochs: Number of epochs for main training
-        smooth_epochs: Number of epochs for smoothness phase
+        num_cycles: Number of cycles for progressive training
+        progressive: Whether to use progressive training
     """
     # Create group matrix from assignments
     group_assignments = properties["group_assignments"]
@@ -340,29 +344,118 @@ def create_two_phase_config(properties, N, M=10, main_epochs=3000, smooth_epochs
     for i, firms in group_assignments.items():
         group_matrix[int(i), firms] = 1
 
-    # Create main training config
-    main_config = {
-        "N": N,
-        "M": M,
-        "group_assignments": properties["group_assignments"],
-        "group_matrix": group_matrix,
-        "correlation_targets": properties["correlations"],
-        "hill_exponent_targets": properties["hill_exponents"],
-        "io_matrix_target": torch.tensor(properties["io_matrix"]),
-        "loss_weights": {
-            "correlation": 1.0,
-            "hill": 1.0,
-            "io": 5.0,
-            "smooth": 0.1,  # Low weight during main training
-        },
-        "learning_rate": 0.01,
-        "num_epochs": main_epochs,
-        "beta_degree": 5.0,
-        "beta_ccdf": 5.0,
-        "beta_tail": 10.0,
-        "tail_fraction": 0.1,
-        "num_ccdf_points": 20,
-    }
+    if progressive:
+        # Calculate epochs per phase for progressive training
+        num_phases = 5  # IO Matrix, Correlations, Hill Exponents, Smoothness, Fine Tuning
+        epochs_per_phase = main_epochs // (num_phases * num_cycles)
+
+        main_config = {
+            "N": N,
+            "M": M,
+            "group_assignments": properties["group_assignments"],
+            "group_matrix": group_matrix,
+            "correlation_targets": properties["correlations"],
+            "hill_exponent_targets": properties["hill_exponents"],
+            "io_matrix_target": torch.tensor(properties["io_matrix"]),
+            "density_target": properties.get("density", None),
+            "loss_weights": {
+                "correlation": 1.0,
+                "hill": 1.0,
+                "io": 5.0,
+                "smooth": 1.0,
+            },
+            "training_phases": [
+                {
+                    "name": "IO Matrix",
+                    "epochs": epochs_per_phase,
+                    "weights": {
+                        "correlation": 0.0,
+                        "hill": 0.0,
+                        "io": 1.0,
+                        "smooth": 0.0,
+                        "density": 0.0,
+                    },
+                },
+                {
+                    "name": "Correlations",
+                    "epochs": epochs_per_phase,
+                    "weights": {
+                        "correlation": 1.0,
+                        "hill": 0.0,
+                        "io": 0.5,
+                        "smooth": 0.0,
+                        "density": 0.0,
+                    },
+                },
+                {
+                    "name": "Hill Exponents",
+                    "epochs": epochs_per_phase,
+                    "weights": {
+                        "correlation": 0.1,
+                        "hill": 1.0,
+                        "io": 0.5,
+                        "smooth": 0.0,
+                        "density": 0.0,
+                    },
+                },
+                {
+                    "name": "Smoothness",
+                    "epochs": epochs_per_phase,
+                    "weights": {
+                        "correlation": 0.1,
+                        "hill": 0.1,
+                        "io": 0.1,
+                        "smooth": 1.0,
+                        "density": 0.0,
+                    },
+                },
+                {
+                    "name": "Fine Tuning",
+                    "epochs": epochs_per_phase,
+                    "weights": {
+                        "correlation": 1.0,
+                        "hill": 1.0,
+                        "io": 1.0,
+                        "smooth": 0.5,
+                        "density": 0.0,
+                    },
+                },
+            ],
+            "learning_rate": 0.01,
+            "num_epochs": main_epochs,
+            "beta_degree": 5.0,
+            "threshold_degree": 0.5,
+            "beta_ccdf": 5.0,
+            "beta_tail": 10.0,
+            "tail_fraction": 0.05,
+            "num_ccdf_points": 20,
+        }
+    else:
+        # Regular training config
+        main_config = {
+            "N": N,
+            "M": M,
+            "group_assignments": properties["group_assignments"],
+            "group_matrix": group_matrix,
+            "correlation_targets": properties["correlations"],
+            "hill_exponent_targets": properties["hill_exponents"],
+            "io_matrix_target": torch.tensor(properties["io_matrix"]),
+            "density_target": properties.get("density", None),
+            "loss_weights": {
+                "correlation": 1.0,
+                "hill": 1.0,
+                "io": 5.0,
+                "smooth": 0.1,
+            },
+            "learning_rate": 0.01,
+            "num_epochs": main_epochs,
+            "beta_degree": 5.0,
+            "threshold_degree": 0.5,
+            "beta_ccdf": 5.0,
+            "beta_tail": 10.0,
+            "tail_fraction": 0.05,
+            "num_ccdf_points": 20,
+        }
 
     # Create smoothness phase config
     smooth_config = main_config.copy()
@@ -372,7 +465,7 @@ def create_two_phase_config(properties, N, M=10, main_epochs=3000, smooth_epochs
         "io": 0.0,
         "smooth": 1.0,  # Only optimize smoothness
     }
-    smooth_config["num_epochs"] = smooth_epochs
+    smooth_config["num_epochs"] = 500  # Fixed 500 epochs for smoothness
     smooth_config["learning_rate"] = 0.001  # Lower learning rate for fine-tuning
 
     # Create JSON-serializable versions
@@ -389,42 +482,56 @@ def create_two_phase_config(properties, N, M=10, main_epochs=3000, smooth_epochs
 
 def main():
     # Add argument parsing
-    parser = argparse.ArgumentParser(
-        description="Network generation training script with smoothness phase."
-    )
+    parser = argparse.ArgumentParser(description="Network generation training script.")
     parser.add_argument("--N", type=int, default=1000, help="Number of nodes (default: 1000)")
+    parser.add_argument("--M", type=int, default=10, help="Number of components (default: 10)")
     parser.add_argument(
         "--sparsity", type=float, default=0.05, help="Network sparsity (default: 0.05)"
     )
     parser.add_argument(
-        "--main-epochs",
-        type=int,
-        default=3000,
-        help="Number of epochs for main training (default: 3000)",
+        "--progressive", action="store_true", help="Use progressive training with multiple cycles"
     )
     parser.add_argument(
-        "--smooth-epochs",
+        "--num-cycles",
         type=int,
-        default=1000,
-        help="Number of epochs for smoothness phase (default: 1000)",
+        default=1,
+        help="Number of cycles for progressive training (default: 1)",
+    )
+    parser.add_argument(
+        "--epochs", type=int, default=1000, help="Total number of training epochs (default: 1000)"
     )
     args = parser.parse_args()
 
     # Set random seed for reproducibility
     torch.manual_seed(42)
 
+    # Parameters
+    N = args.N  # Number of nodes
+    sparsity = args.sparsity  # Network sparsity
+    M = args.M  # Number of components for factorization
+
     print("Step 1: Generating synthetic network...")
-    W_original = generate_synthetic_network(args.N, density=args.sparsity)
+    W_original = generate_synthetic_network(N, density=sparsity)
 
     print("Step 2: Computing network properties...")
-    properties = compute_network_properties(W_original)
+    properties = compute_network_properties(W_original, soft_approx=False)
 
-    print("\nStep 3: Creating configurations...")
-    print(f"Main training: {args.main_epochs} epochs")
-    print(f"Smoothness phase: {args.smooth_epochs} epochs")
+    print("\nStep 3: Creating configuration...")
+    if args.progressive:
+        print(f"Using progressive training with {args.num_cycles} cycles...")
+        print(
+            f"Total epochs: {args.epochs} (+500 smoothness) (≈ {args.epochs // (5 * args.num_cycles)} epochs per phase)"
+        )
+    else:
+        print(f"Using standard training with {args.epochs} epochs (+500 smoothness)")
 
-    (main_config, main_json), (smooth_config, smooth_json) = create_two_phase_config(
-        properties, args.N, main_epochs=args.main_epochs, smooth_epochs=args.smooth_epochs
+    (main_config, main_json), (smooth_config, smooth_json) = create_configs(
+        properties,
+        N,
+        M=M,
+        main_epochs=args.epochs,
+        num_cycles=args.num_cycles,
+        progressive=args.progressive,
     )
 
     # Save configurations
@@ -437,13 +544,18 @@ def main():
         json.dump(smooth_json, f, indent=2)
 
     # Compute initial losses
-    initial_model = NetworkGenerator(main_config)
+    initial_model = NetworkGenerator(main_config, normalize=False)
     initial_log_weights = initial_model()
     W_initial = initial_model.get_network_weights()
     initial_loss, initial_partial_losses = compute_loss(initial_log_weights, main_config)
 
     print("\nStep 4: Main training phase...")
-    main_model, main_history = train_model(main_config_path)
+    if args.progressive:
+        main_model, main_history = train_model_progressive(
+            main_config_path, num_cycles=args.num_cycles
+        )
+    else:
+        main_model, main_history = train_model(main_config_path)
 
     print("\nStep 5: Smoothness optimization phase...")
     # Initialize smoothness phase with main model's weights
@@ -455,7 +567,12 @@ def main():
 
     print("\nStep 6: Evaluating results...")
     W_generated = smooth_model.get_network_weights()
-    final_properties = compute_network_properties(W_generated)
+    final_properties = compute_network_properties(
+        W_generated,
+        soft_approx=True,
+        beta_degree=main_config["beta_degree"],
+        threshold=main_config["threshold_degree"],
+    )
 
     # Compute final losses using main config to get all components
     final_log_weights = smooth_model()
@@ -496,7 +613,11 @@ def main():
     print(np.array2string(io_diff, precision=3, suppress_small=True))
 
     # Combine histories for plotting
-    combined_history = {k: main_history[k] + smooth_history[k] for k in main_history.keys()}
+    combined_history = {
+        k: main_history.get(k) + smooth_history.get(k)
+        for k in main_history.keys()
+        if k not in ["cycle", "phase"]
+    }
 
     # Plot distributions
     generate_plots(W_generated, W_original, W_initial, main_config, combined_history)

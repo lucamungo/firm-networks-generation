@@ -152,7 +152,7 @@ def compute_hill_exponent(
         raise ValueError("values must be a 1D tensor")
 
     # Normalize values to prevent numerical issues
-    values = values / values.max().clamp(min=eps)
+    # values = values / values.max().clamp(min=eps) # TODO: will this fuck up the gradient?
 
     # Ensure positive values for log computation
     values = values.clamp(min=eps)
@@ -187,6 +187,6 @@ def compute_hill_exponent(
     mean_log_excess = (log_excesses.sum() / n_eff).clamp(min=eps, max=100)
 
     # Compute Hill estimator with bounds
-    hill_exponent = (1.0 / mean_log_excess).clamp(min=0.1, max=200.0)
+    hill_exponent = (1.0 / mean_log_excess).clamp(min=0.1, max=300.0)
 
     return hill_exponent

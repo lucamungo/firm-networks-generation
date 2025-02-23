@@ -17,6 +17,7 @@ def compute_degrees(
         W: Weighted adjacency matrix of shape (N, N)
         beta_degree: Temperature parameter for softmax
         dim: Dimension to sum over (1 for in-degree, 0 for out-degree)
+        threshold: Threshold for soft degree computation
         eps: Small value to add for numerical stability
 
     Returns:
@@ -38,13 +39,21 @@ def compute_degrees(
     return torch.sum(soft_adjacency, dim=dim) + eps
 
 
-def compute_strengths(W: torch.Tensor, dim: int = 1, eps: float = 1e-8) -> torch.Tensor:
+def compute_strengths(
+    W: torch.Tensor,
+    beta: float = 5.0,
+    threshold: float = 1e-5,
+    dim: int = 1,
+    eps: float = 1e-8,
+) -> torch.Tensor:
     """
     Compute node strengths of a weighted adjacency matrix.
 
     Args:
         W: Weighted adjacency matrix of shape (N, N)
         dim: Dimension to sum over (1 for in-strength, 0 for out-strength)
+        beta: Temperature parameter for softmax
+        threshold: Threshold for soft degree computation
         eps: Small value to add for numerical stability
 
     Returns:
@@ -60,7 +69,12 @@ def compute_strengths(W: torch.Tensor, dim: int = 1, eps: float = 1e-8) -> torch
         raise ValueError("dim must be 0 or 1")
 
     # Compute strengths with numerical stability
-    return torch.sum(W, dim=dim) + eps
+    # Apply sigmoid with temperature
+    soft_adjacency = torch.sigmoid(beta * (W - threshold))
+
+    soft_masked_W = soft_adjacency * W
+
+    return torch.sum(soft_masked_W, dim=dim) + eps
 
 
 def compute_log_correlation(x: torch.Tensor, y: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
@@ -237,5 +251,26 @@ def compute_smoothness_penalty(
         mean_dt = torch.mean(dt)
         second_deriv = d2y / (dt2 + eps) * mean_dt
 
-    # Return sum of squared second derivatives as smoothness penalty
-    return torch.mean(second_deriv * second_deriv)
+    # Compute sum of squared second derivatives as smoothness penalty
+    loss = torch.sum(second_deriv * second_deriv)
+
+    # Add penalty term for second derivative > 0
+    loss += torch.sum(torch.relu(-second_deriv))
+
+    return loss
+
+
+def compute_density(W: torch.Tensor, beta: float = 1.0, threshold: float = 1e-5, eps: float = 1e-8):
+    """
+    Compute density of a weighted adjacency matrix.
+    """
+    if not isinstance(W, torch.Tensor):
+        raise TypeError("W must be a torch.Tensor")
+
+    if W.dim() != 2 or W.shape[0] != W.shape[1]:
+        raise ValueError("W must be a square matrix")
+
+    # Apply sigmoid with temperature
+    soft_adjacency = torch.sigmoid(beta * (W - threshold))
+
+    return torch.mean(soft_adjacency)

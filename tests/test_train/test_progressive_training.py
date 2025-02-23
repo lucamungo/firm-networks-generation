@@ -54,22 +54,46 @@ class TestProgressiveTraining:
                 {
                     "name": "IO Matrix",
                     "epochs": 100,
-                    "weights": {"correlation": 0.0, "hill": 0.0, "io": 1.0, "smooth": 0.0},
+                    "weights": {
+                        "correlation": 0.0,
+                        "hill": 0.0,
+                        "io": 1.0,
+                        "smooth": 0.0,
+                        "continuity": 0.0,
+                    },
                 },
                 {
                     "name": "Correlations",
                     "epochs": 100,
-                    "weights": {"correlation": 1.0, "hill": 0.0, "io": 0.5, "smooth": 0.0},
+                    "weights": {
+                        "correlation": 1.0,
+                        "hill": 0.0,
+                        "io": 0.5,
+                        "smooth": 0.0,
+                        "continuity": 0.0,
+                    },
                 },
                 {
                     "name": "Hill Exponents",
                     "epochs": 100,
-                    "weights": {"correlation": 0.5, "hill": 1.0, "io": 0.5, "smooth": 0.0},
+                    "weights": {
+                        "correlation": 0.5,
+                        "hill": 1.0,
+                        "io": 0.5,
+                        "smooth": 0.0,
+                        "continuity": 0.0,
+                    },
                 },
                 {
                     "name": "Fine Tuning",
                     "epochs": 100,
-                    "weights": {"correlation": 1.0, "hill": 1.0, "io": 1.0, "smooth": 0.1},
+                    "weights": {
+                        "correlation": 1.0,
+                        "hill": 1.0,
+                        "io": 1.0,
+                        "smooth": 0.1,
+                        "continuity": 0.0,
+                    },
                 },
             ],
             # Training hyperparameters
@@ -96,16 +120,26 @@ class TestProgressiveTraining:
         # Check total number of epochs
         total_phase_epochs = sum(phase["epochs"] for phase in self.config["training_phases"])
         expected_total_epochs = total_phase_epochs * num_cycles
-        assert len(history["total"]) == expected_total_epochs
+        assert (
+            len(history["total"]) == expected_total_epochs
+        ), f"Expected {expected_total_epochs} epochs, got {len(history['total'])}"
 
         # Check cycle tracking
-        assert len(history["cycle"]) == expected_total_epochs
-        assert set(history["cycle"]) == set(range(num_cycles))
+        assert (
+            len(history["cycle"]) == expected_total_epochs
+        ), f"Expected {expected_total_epochs} cycles, got {len(history['cycle'])}"
+        assert set(history["cycle"]) == set(
+            range(num_cycles)
+        ), f"Expected cycles {range(num_cycles)}, got {history['cycle']}"
 
         # Check phase tracking
-        assert len(history["phase"]) == expected_total_epochs
+        assert (
+            len(history["phase"]) == expected_total_epochs
+        ), f"Expected {expected_total_epochs} phases, got {len(history['phase'])}"
         num_phases = len(self.config["training_phases"])
-        assert set(history["phase"]) == set(range(num_phases))
+        assert set(history["phase"]) == set(
+            range(num_phases)
+        ), f"Expected phases {range(num_phases)}, got {history['phase']}"
 
     def test_objective_improvement(self):
         """Test that objectives improve across cycles."""

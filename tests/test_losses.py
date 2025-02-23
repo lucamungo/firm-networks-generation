@@ -36,6 +36,8 @@ def sample_config() -> dict:
             "hill": 1.0,
             "io": 1.0,
             "smooth": 0.1,
+            "density": 0.0,
+            "continuity": 0.0,
         },
         "beta_degree": 1.0,
         "beta_tail": 0.01,
