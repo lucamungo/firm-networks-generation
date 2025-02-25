@@ -10,6 +10,7 @@ from network_generation.losses import (
     compute_io_loss,
     compute_loss,
     compute_smoothness_loss,
+    compute_sparsity_loss,
 )
 from network_generation.stats import compute_degrees
 
@@ -231,6 +232,106 @@ class TestSmoothnessLoss:
             return loss
 
         check_gradients(func, [M])
+
+
+class TestDensityLoss:
+    """Test suite for density loss computation."""
+
+    def test_basic_computation(self, sample_matrix: torch.Tensor) -> None:
+        """Test basic computation of density loss."""
+        # Test with a target density of 0.5
+        target_density = 0.5
+        loss = compute_sparsity_loss(
+            sample_matrix, target_sparsity=target_density, beta=1.0, threshold=1e-5
+        )
+
+        assert isinstance(loss, torch.Tensor)
+        assert loss >= 0  # Loss should be non-negative
+        assert not torch.isnan(loss)  # Loss should not be NaN
+        assert not torch.isinf(loss)  # Loss should not be infinite
+
+    def test_no_target_density(self, sample_matrix: torch.Tensor) -> None:
+        """Test computation with no target density."""
+        loss = compute_sparsity_loss(sample_matrix, target_sparsity=None, beta=1.0, threshold=1e-5)
+
+        assert isinstance(loss, torch.Tensor)
+        assert loss == 0.0  # Should return zero loss when no target is provided
+
+    def test_extreme_targets(self, sample_matrix: torch.Tensor) -> None:
+        """Test computation with extreme target values."""
+        # Test with target density of 0 (completely sparse)
+        loss_sparse = compute_sparsity_loss(
+            sample_matrix, target_sparsity=0.0, beta=1.0, threshold=1e-5
+        )
+        assert not torch.isnan(loss_sparse)
+        assert not torch.isinf(loss_sparse)
+
+        # Test with target density of 1 (completely dense)
+        loss_dense = compute_sparsity_loss(
+            sample_matrix, target_sparsity=1.0, beta=1.0, threshold=1e-5
+        )
+        assert not torch.isnan(loss_dense)
+        assert not torch.isinf(loss_dense)
+
+    def test_beta_effect(self, sample_matrix: torch.Tensor) -> None:
+        """Test effect of beta parameter on density loss."""
+        target_density = 0.5
+
+        # Low beta should give more "fuzzy" density
+        loss_low_beta = compute_sparsity_loss(
+            sample_matrix, target_sparsity=target_density, beta=0.1, threshold=1e-5
+        )
+
+        # High beta should give more "sharp" density
+        loss_high_beta = compute_sparsity_loss(
+            sample_matrix, target_sparsity=target_density, beta=10.0, threshold=1e-5
+        )
+
+        assert loss_low_beta != loss_high_beta  # Different betas should give different losses
+
+    def test_threshold_effect(self, sample_matrix: torch.Tensor) -> None:
+        """Test effect of threshold parameter on density loss."""
+        target_density = 0.5
+
+        # Low threshold should include more elements
+        loss_low_thresh = compute_sparsity_loss(
+            sample_matrix, target_sparsity=target_density, beta=1.0, threshold=1e-5
+        )
+
+        # High threshold should exclude more elements
+        loss_high_thresh = compute_sparsity_loss(
+            sample_matrix, target_sparsity=target_density, beta=1.0, threshold=0.5
+        )
+
+        assert (
+            loss_low_thresh != loss_high_thresh
+        )  # Different thresholds should give different losses
+
+    def test_gradient(self, sample_matrix: torch.Tensor) -> None:
+        """Test gradient computation using finite differences."""
+        M = sample_matrix.clone()
+        target_density = 0.5
+
+        def func(x: torch.Tensor) -> torch.Tensor:
+            return compute_sparsity_loss(
+                x, target_sparsity=target_density, beta=1.0, threshold=1e-5
+            )
+
+        check_gradients(func, [M])
+
+    def test_invalid_target(self, sample_matrix: torch.Tensor) -> None:
+        """Test handling of invalid target values."""
+        # Test with target density > 1
+        with pytest.raises(ValueError):
+            compute_sparsity_loss(
+                sample_matrix, target_sparsity=1.5, beta=1.0, threshold=1e-5  # Invalid: > 1
+            )
+
+        # Test with negative target density
+        with pytest.raises(ValueError):
+            compute_sparsity_loss(
+                sample_matrix, target_sparsity=-0.5, beta=1.0, threshold=1e-5  # Invalid: < 0
+            )
 
 
 class TestTotalLoss:

@@ -3,7 +3,7 @@
 This module implements the core network generation model using matrix factorization
 with learnable parameters.
 """
-
+import numpy as np
 import logging
 from pathlib import Path
 from typing import TypeVar
@@ -113,3 +113,55 @@ class NetworkGenerator(nn.Module):
             torch.Tensor: Weight matrix W of shape (N, N)
         """
         return torch.exp(self.compute_log_weights())
+
+
+class ModularNetworkGenerator(nn.Module):
+    """Network generator with separated parameter groups for different properties."""
+
+    def __init__(self, config):
+        super().__init__()
+        self.N = config["N"]
+
+        # Density control parameters
+        self.density_factor = nn.Parameter(torch.tensor([0.0]))
+
+        # Degree distribution parameters
+        M_degree = config.get("M_degree", 5)
+        self.degree_alpha = nn.Parameter(torch.randn(M_degree) / np.sqrt(M_degree))
+        self.degree_U = nn.Parameter(torch.randn(M_degree, self.N))
+        self.degree_V = nn.Parameter(torch.randn(M_degree, self.N))
+
+        # IO structure parameters
+        M_io = config.get("M_io", 5)
+        self.io_alpha = nn.Parameter(torch.randn(M_io) / np.sqrt(M_io))
+        self.io_U = nn.Parameter(torch.randn(M_io, self.N))
+        self.io_V = nn.Parameter(torch.randn(M_io, self.N))
+
+        # Strength distribution parameters
+        M_strength = config.get("M_strength", 5)
+        self.strength_alpha = nn.Parameter(torch.randn(M_strength) / np.sqrt(M_strength))
+        self.strength_U = nn.Parameter(torch.randn(M_strength, self.N))
+        self.strength_V = nn.Parameter(torch.randn(M_strength, self.N))
+
+    def compute_log_weights(self):
+        # Base matrix with uniform density
+        base_density = torch.zeros((self.N, self.N))
+        density_mask = 1.0 - torch.eye(self.N)  # Remove diagonal
+        density_component = torch.sigmoid(self.density_factor) * density_mask
+
+        # Degree distribution component
+        degree_alpha_U = self.degree_alpha.unsqueeze(1) * self.degree_U
+        degree_component = torch.matmul(degree_alpha_U.T, self.degree_V)
+
+        # IO structure component
+        io_alpha_U = self.io_alpha.unsqueeze(1) * self.io_U
+        io_component = torch.matmul(io_alpha_U.T, self.io_V)
+
+        # Strength distribution component
+        strength_alpha_U = self.strength_alpha.unsqueeze(1) * self.strength_U
+        strength_component = torch.matmul(strength_alpha_U.T, self.strength_V)
+
+        # Combine components
+        M = density_component + degree_component + io_component + strength_component
+
+        return M

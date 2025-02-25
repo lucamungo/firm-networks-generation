@@ -2,7 +2,6 @@ import argparse
 import json
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from macrocosm_visual.viz_setup import setup_matplotlib
@@ -18,271 +17,10 @@ from network_generation.stats import (
     compute_strengths,
 )
 from network_generation.train import train_model, train_model_progressive
+from scripts.utils.analysis import print_comparison_table, print_loss_comparison
+from scripts.utils.viz import generate_plots
 
 setup_matplotlib()
-
-
-def plot_distributions(
-    W_original,
-    W_generated,
-    W_initial=None,
-    beta_degree=10.0,
-    threshold_degree: float = 1e-1,
-    tail_fraction: float = 0.05,
-):
-    """Plot degree and strength distributions for original, initial, and generated networks."""
-    # Create figure with 2x2 subplots
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-    fig.suptitle("Network Distributions Comparison", fontsize=14)
-
-    # Function to create CCDF and find threshold point
-    def compute_ccdf_numpy(values):
-        sorted_values = np.sort(values)
-        p = 1 - np.arange(len(sorted_values)) / len(sorted_values)
-
-        # Calculate the index corresponding to the tail fraction
-        k = max(int(len(values) * tail_fraction), 2)
-        threshold_idx = len(values) - k
-        threshold_value = sorted_values[threshold_idx]
-        threshold_p = p[threshold_idx]
-
-        return sorted_values, p, threshold_value, threshold_p
-
-    # Compute distributions with Hill thresholds
-    # Original network distributions
-    in_degrees_orig = (W_original > 0).sum(dim=0).detach().numpy()
-    out_degrees_orig = (W_original > 0).sum(dim=1).detach().numpy()
-    in_strengths_orig = compute_strengths(W_original, dim=0).detach().numpy()
-    out_strengths_orig = compute_strengths(W_original, dim=1).detach().numpy()
-
-    # Generated network distributions
-    in_degrees_gen = (
-        compute_degrees(W=W_generated, beta_degree=beta_degree, threshold=threshold_degree, dim=0)
-        .detach()
-        .numpy()
-    )
-    out_degrees_gen = (
-        compute_degrees(W=W_generated, beta_degree=beta_degree, threshold=threshold_degree, dim=1)
-        .detach()
-        .numpy()
-    )
-    in_strengths_gen = (
-        compute_strengths(W_generated, beta=beta_degree, threshold=threshold_degree, dim=0)
-        .detach()
-        .numpy()
-    )
-    out_strengths_gen = (
-        compute_strengths(W_generated, beta=beta_degree, threshold=threshold_degree, dim=1)
-        .detach()
-        .numpy()
-    )
-
-    # Function to plot distribution with Hill threshold markers
-    def plot_dist(ax, orig_values, gen_values, init_values=None, title=""):
-        x_orig, y_orig, thresh_orig, p_orig = compute_ccdf_numpy(orig_values)
-        x_gen, y_gen, thresh_gen, p_gen = compute_ccdf_numpy(gen_values)
-
-        # Plot distributions
-        line1 = ax.loglog(x_orig, y_orig, "b-", label="Original")[0]
-        line2 = ax.loglog(x_gen, y_gen, "r--", label="Generated")[0]
-
-        # Plot Hill threshold points with markers
-        ax.plot(thresh_orig, p_orig, "x", color="gray", markersize=8)
-        ax.plot(thresh_gen, p_gen, "x", color="gray", markersize=8)
-
-        if init_values is not None:
-            x_init, y_init, thresh_init, p_init = compute_ccdf_numpy(init_values)
-            line3 = ax.loglog(x_init, y_init, "g:", label="Initial")[0]
-            ax.plot(thresh_init, p_init, "x", color="gray", markersize=8)
-
-        ax.set_title(title)
-        ax.grid(True, which="both", ls="-", alpha=0.2)
-        return line1, line2, line3 if init_values is not None else None
-
-    # Plot all distributions
-    lines = plot_dist(
-        axes[0, 0],
-        in_degrees_orig,
-        in_degrees_gen,
-        init_values=(
-            None
-            if W_initial is None
-            else compute_degrees(
-                W=W_initial, beta_degree=beta_degree, threshold=threshold_degree, dim=0
-            )
-            .detach()
-            .numpy()
-        ),
-        title="In-degree Distribution",
-    )
-    axes[0, 0].set_xlabel("In-degree")
-    axes[0, 0].set_ylabel("CCDF")
-
-    plot_dist(
-        axes[0, 1],
-        out_degrees_orig,
-        out_degrees_gen,
-        init_values=(
-            None
-            if W_initial is None
-            else compute_degrees(
-                W=W_initial, beta_degree=beta_degree, threshold=threshold_degree, dim=1
-            )
-            .detach()
-            .numpy()
-        ),
-        title="Out-degree Distribution",
-    )
-    axes[0, 1].set_xlabel("Out-degree")
-    axes[0, 1].set_ylabel("CCDF")
-
-    plot_dist(
-        axes[1, 0],
-        in_strengths_orig,
-        in_strengths_gen,
-        init_values=(
-            None
-            if W_initial is None
-            else compute_strengths(W_initial, beta=beta_degree, threshold=threshold_degree, dim=0)
-            .detach()
-            .numpy()
-        ),
-        title="In-strength Distribution",
-    )
-    axes[1, 0].set_xlabel("In-strength")
-    axes[1, 0].set_ylabel("CCDF")
-
-    plot_dist(
-        axes[1, 1],
-        out_strengths_orig,
-        out_strengths_gen,
-        init_values=(
-            None
-            if W_initial is None
-            else compute_strengths(W_initial, beta=beta_degree, threshold=threshold_degree, dim=1)
-            .detach()
-            .numpy()
-        ),
-        title="Out-strength Distribution",
-    )
-    axes[1, 1].set_xlabel("Out-strength")
-    axes[1, 1].set_ylabel("CCDF")
-
-    # Create a single legend at the bottom
-    lines_for_legend = [line for line in lines if line is not None]
-    # Add a dummy line for the threshold marker
-    threshold_marker = plt.Line2D(
-        [0], [0], color="gray", marker="x", linestyle="None", markersize=8, label="Hill threshold"
-    )
-    lines_for_legend.append(threshold_marker)
-
-    fig.legend(handles=lines_for_legend, loc="center", bbox_to_anchor=(0.5, 0.02), ncol=4)
-
-    # Adjust layout to make room for the legend
-    plt.tight_layout()
-    plt.subplots_adjust(bottom=0.15)
-
-    return fig
-
-
-def generate_plots(W_generated, W_original, W_initial, config, history):
-    fig = plot_distributions(
-        W_original,
-        W_generated,
-        W_initial,
-        beta_degree=config["beta_degree"],
-        threshold_degree=config["threshold_degree"],
-        tail_fraction=config["tail_fraction"],
-    )
-    # Save plot
-    plot_path = Path("./distributions.png")
-    fig.savefig(plot_path, dpi=300, bbox_inches="tight")
-    print(f"\nDistribution plots saved to {plot_path}")
-    # Save training history plot
-    plt.figure(figsize=(12, 6))
-    plt.semilogy(history["total"], label="Total Loss")
-    plt.semilogy(history["correlation"], label="Correlation Loss")
-    plt.semilogy(history["hill"], label="Hill Loss")
-    plt.semilogy(history["io"], label="IO Loss")
-    plt.semilogy(history["smooth"], label="Smoothness Loss")
-    plt.grid(True)
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.title("Training History")
-    plt.legend()
-    plt.tight_layout()
-    # Save training history plot
-    history_path = Path("./training_history.png")
-    plt.savefig(history_path, dpi=300, bbox_inches="tight")
-    print(f"Training history plot saved to {history_path}")
-
-
-def print_comparison_table(name, original, generated, difference=None):
-    """Print a nicely formatted comparison table."""
-    print(f"\n{name}:")
-    print("-" * 70)
-    print(f"{'Property':<30} {'Original':>12} {'Generated':>12} {'Diff':>12}")
-    print("-" * 70)
-
-    for k in original.keys():
-        orig_val = original[k]
-        gen_val = generated[k]
-        diff = gen_val - orig_val if difference is not None else None
-
-        if difference is not None:
-            print(f"{k:<30} {orig_val:>12.3f} {gen_val:>12.3f} {diff:>12.3f}")
-        else:
-            print(f"{k:<30} {orig_val:>12.3f} {gen_val:>12.3f}")
-    print("-" * 70)
-
-
-def print_loss_comparison(initial_losses, final_losses):
-    """Print a comparison of losses before and after training."""
-    print("\nLoss Comparison:")
-    print("-" * 102)
-    print(f"{'Component':<30} {'Initial':>12} {'Final':>12} {'Abs Change':>12} {'% Change':>12}")
-    print("-" * 102)
-
-    # First print main loss components
-    main_components = ["correlation", "hill", "io", "smooth"]
-    for k in main_components:
-        if k in initial_losses and k in final_losses:
-            init_val = initial_losses[k].item()
-            final_val = final_losses[k].item()
-            abs_change = final_val - init_val
-            pct_change = (abs_change / init_val) * 100 if init_val != 0 else float("inf")
-
-            print(
-                f"{k:<30} {init_val:>12.4f} {final_val:>12.4f} {abs_change:>12.4f} {pct_change:>11.1f}%"
-            )
-
-    print("-" * 102)
-
-    # Then print detailed components, grouped by type
-    groups = {
-        "Correlation Components": "correlation_",
-        "Hill Components": "hill_",
-        "Smoothness Components": "smooth_",
-    }
-
-    for group_name, prefix in groups.items():
-        components = [k for k in initial_losses.keys() if k.startswith(prefix)]
-        if components:
-            print(f"\n{group_name}:")
-            print("-" * 102)
-            for k in components:
-                if k in final_losses:
-                    init_val = initial_losses[k].item()
-                    final_val = final_losses[k].item()
-                    abs_change = final_val - init_val
-                    pct_change = (abs_change / init_val) * 100 if init_val != 0 else float("inf")
-
-                    # Remove the prefix for cleaner display
-                    display_name = k[len(prefix) :]
-                    print(
-                        f"{display_name:<30} {init_val:>12.4f} {final_val:>12.4f} {abs_change:>12.4f} {pct_change:>11.1f}%"
-                    )
-            print("-" * 102)
 
 
 def generate_synthetic_network(N=1000, density=0.1, mu=0.0, sigma=1.0):
@@ -378,7 +116,7 @@ def compute_network_properties(
     io_matrix = compute_io_matrix(W, group_matrix)
 
     # Compute density
-    density = compute_density(W, beta=beta_degree, threshold=threshold, eps=eps)
+    density = in_degrees.sum() / (N * N)
 
     return {
         "correlations": {
@@ -416,7 +154,7 @@ def create_config(properties, N, M=10, num_epochs=3000, num_cycles=1):
         group_matrix[int(i), firms] = 1
 
     # Calculate epochs per phase
-    num_phases = 6  # Density, IO Matrix, Correlations, Hill Exponents, Smoothness, Fine Tuning
+    num_phases = 7  # Density, IO Matrix, Correlations, Hill Exponents, Smoothness, Fine Tuning
     epochs_per_phase = num_epochs // (num_phases * num_cycles)
 
     # Create config with tensor values converted to lists where needed
@@ -438,17 +176,18 @@ def create_config(properties, N, M=10, num_epochs=3000, num_cycles=1):
             "continuity": 1.0,
         },
         "training_phases": [
-            # {
-            #     "name": "Density",
-            #     "epochs": epochs_per_phase,
-            #     "weights": {
-            #         "correlation": 0.0,
-            #         "hill": 0.0,
-            #         "io": 0.01,
-            #         "smooth": 0.0,
-            #         "density": 1.0,
-            #     },
-            # },
+            {
+                "name": "Density",
+                "epochs": epochs_per_phase,
+                "weights": {
+                    "correlation": 0.0,
+                    "hill": 0.0,
+                    "io": 0.01,
+                    "smooth": 0.1,
+                    "density": 10000.0,
+                    "continuity": 0.5,
+                },
+            },
             {
                 "name": "IO Matrix",
                 "epochs": epochs_per_phase,
@@ -516,9 +255,9 @@ def create_config(properties, N, M=10, num_epochs=3000, num_cycles=1):
                     "correlation": 1.0,
                     "hill": 1.0,
                     "io": 1.0,
-                    "smooth": 1.0,
-                    "density": 0.1,
-                    "continuity": 0.0,
+                    "smooth": 20.0,
+                    "density": 2500.0,
+                    "continuity": 1.0,
                 },
             },
         ],
@@ -636,6 +375,17 @@ def main():
         final_properties["hill_exponents"],
         difference=True,
     )
+
+    # Add density comparison
+    print("\nNetwork Density:")
+    print("-" * 70)
+    print(f"{'Property':<30} {'Original':>12} {'Generated':>12} {'Diff':>12}")
+    print("-" * 70)
+    orig_density = properties["density"]
+    gen_density = final_properties["density"]
+    diff_density = gen_density - orig_density
+    print(f"{'density':<30} {orig_density:>12.3f} {gen_density:>12.3f} {diff_density:>12.3f}")
+    print("-" * 70)
 
     # Print loss comparison
     print_loss_comparison(initial_partial_losses, final_partial_losses)

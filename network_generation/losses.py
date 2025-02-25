@@ -288,7 +288,7 @@ def compute_smoothness_loss(
 
 
 def compute_sparsity_loss(
-    W: torch.Tensor,
+    M: torch.Tensor,
     target_sparsity: Optional[float],
     beta: float,
     threshold: float = 1e-5,
@@ -296,9 +296,25 @@ def compute_sparsity_loss(
 ) -> torch.Tensor:
     """
     Computes the discrepancy between the matrix's sparsity and a target sparsity.
+
+    Args:
+        M: Log-weight matrix of shape (N, N)
+        target_sparsity: Target density value between 0 and 1, or None to disable density loss
+        beta: Temperature parameter for soft thresholding
+        threshold: Threshold value for soft thresholding
+        eps: Small value for numerical stability
+
+    Returns:
+        Loss value measuring discrepancy from target density
     """
     if target_sparsity is None:
-        return torch.tensor(0.0, device=W.device)
+        return torch.tensor(0.0, device=M.device)
+
+    if not (0 <= target_sparsity <= 1):
+        raise ValueError("Target density must be between 0 and 1")
+
+    # Convert to weights matrix first
+    W = torch.exp(M)
 
     sparsity = compute_density(W, beta, threshold, eps)
 
@@ -406,6 +422,7 @@ def compute_loss(
     target_sparsity = config.get("density_target", None)
 
     if "density" not in weights:
+        print("AAA")
         weights["density"] = 0.0
 
     if "continuity" not in weights:

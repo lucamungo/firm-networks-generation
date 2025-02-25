@@ -7,6 +7,7 @@ import torch
 from network_generation.stats import (
     compute_ccdf,
     compute_degrees,
+    compute_density,
     compute_io_matrix,
     compute_log_correlation,
     compute_smoothness_penalty,
@@ -234,6 +235,55 @@ class TestComputeStrengths:
 
         def func(x: torch.Tensor) -> torch.Tensor:
             return compute_strengths(x, dim=1).sum()
+
+        check_gradients(func, [W])
+
+
+class TestComputeDensity:
+    """Test suite for density computation."""
+
+    def test_basic_computation(self, sample_matrix: torch.Tensor) -> None:
+        """Test basic computation of density."""
+        density = compute_density(sample_matrix)
+        assert isinstance(density, torch.Tensor)
+        assert 0 <= density <= 1  # Density should be between 0 and 1
+        assert not torch.isnan(density)  # Density should not be NaN
+        assert not torch.isinf(density)  # Density should not be infinite
+
+    def test_beta_effect(self, sample_matrix: torch.Tensor) -> None:
+        """Test effect of beta parameter on density computation."""
+        # Low beta should give more "fuzzy" density
+        density_low_beta = compute_density(sample_matrix, beta=0.1)
+
+        # High beta should give more "sharp" density
+        density_high_beta = compute_density(sample_matrix, beta=10.0)
+
+        assert (
+            density_low_beta != density_high_beta
+        )  # Different betas should give different densities
+        assert 0 <= density_low_beta <= 1
+        assert 0 <= density_high_beta <= 1
+
+    def test_threshold_effect(self, sample_matrix: torch.Tensor) -> None:
+        """Test effect of threshold parameter on density computation."""
+        # Low threshold should include more elements
+        density_low_thresh = compute_density(sample_matrix, threshold=1e-5)
+
+        # High threshold should exclude more elements
+        density_high_thresh = compute_density(sample_matrix, threshold=0.5)
+
+        assert (
+            density_low_thresh >= density_high_thresh
+        )  # Higher threshold should give lower or equal density
+        assert 0 <= density_low_thresh <= 1
+        assert 0 <= density_high_thresh <= 1
+
+    def test_gradient(self) -> None:
+        """Test gradient computation using finite differences."""
+        W = torch.randn(4, 4)
+
+        def func(x: torch.Tensor) -> torch.Tensor:
+            return compute_density(x)
 
         check_gradients(func, [W])
 

@@ -217,7 +217,7 @@ def train_model_progressive(
     save_path: Optional[str | Path] = None,
     device: str | torch.device = "cpu",
     num_cycles: int = 3,
-    early_stopping_patience: int = 100,  # New parameter
+    early_stopping_patience: int = 100,
 ) -> tuple[NetworkGenerator, dict[str, list[float]]]:
     """Train network generator model using progressive loss optimization.
 
@@ -297,7 +297,6 @@ def train_model_progressive(
                 min_lr=1e-6,
                 threshold=1e-4,
                 threshold_mode="rel",
-                verbose=True,
             )
 
             # Training loop for this phase
@@ -339,11 +338,20 @@ def train_model_progressive(
                     {
                         "cycle": f"{cycle}/{num_cycles - 1}",
                         "phase": f"{phase_idx+1}/{len(phases)}",
-                        "loss": f"{loss.item():.4f}",
-                        "correlation": f"{partial_losses['correlation'].item():.4f}",
-                        "hill": f"{partial_losses['hill'].item():.4f}",
-                        "io": f"{partial_losses['io'].item():.4f}",
-                        "smooth": f"{partial_losses['smooth'].item():.4f}",
+                        "loss": f"{loss.item():.3f}",
+                        "corr": f"{partial_losses['correlation'].item():.3f}",
+                        "hill": (
+                            f"{partial_losses['hill'].item():.2e}"
+                            if partial_losses["hill"].item() > 10
+                            else f"{partial_losses['hill'].item():.3f}"
+                        ),
+                        "io": f"{partial_losses['io'].item():.3f}",
+                        "smooth": (
+                            f"{partial_losses['smooth'].item():.2e}"
+                            if partial_losses["smooth"].item() > 10
+                            else f"{partial_losses['smooth'].item():.3f}"
+                        ),
+                        "density": f"{partial_losses['density'].item():.3f}",
                         "lr": f"{current_lr:.2e}",
                     }
                 )
