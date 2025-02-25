@@ -19,6 +19,16 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound="NetworkGenerator")
 
+"""Updated initialization function for NetworkGenerator.
+
+This module contains an improved implementation of the initialization function
+that consistently uses log-weights for both density computation and evaluation.
+"""
+
+import numpy as np
+import torch
+from scipy import stats
+
 
 def initialize_from_target_power_laws(config):
     """Generate initialization values for NetworkGenerator with correct density approach.
@@ -29,8 +39,6 @@ def initialize_from_target_power_laws(config):
     Returns:
         tuple: (alpha, U, V) as numpy arrays for initializing NetworkGenerator
     """
-    import numpy as np
-
     N = config["N"]
     M = config["M"]
     target_density = config["density_target"]  # Percentage
@@ -73,32 +81,73 @@ def initialize_from_target_power_laws(config):
     # Calculate binary density needed based on expected nodes and edges
     # Target is in percentage, convert to proportion
     target_density_prop = target_density / 100.0
-    expected_edges = N * N * target_density_prop
 
-    # Estimate how many edges we need in the binary adjacency matrix
-    # This maps directly to the expected edges in the weight matrix
-    binary_density_needed = expected_edges / (N * N)
+    # 2. Create a log-weight matrix directly instead of going through binary adjacency
+    # First create the outer product structure which gives us connectivity patterns
+    affinity = np.outer(out_degrees, in_degrees)
 
-    # Create affinity matrix S as outer product of in and out degrees
-    S = np.outer(in_degrees, out_degrees)
-
-    # Normalize S so average equals our binary density target
-    S = S / np.mean(S) * binary_density_needed
-
-    # Ensure values are between 0 and 1 (probabilities)
-    S = np.minimum(S, 1.0)
+    # Scale it to have reasonable values
+    affinity = affinity / np.mean(affinity) * 10
 
     # Remove diagonal (no self-loops)
-    np.fill_diagonal(S, 0)
+    np.fill_diagonal(affinity, 0)
 
-    # Sample active links based on these probabilities
-    adjacency = (np.random.random((N, N)) < S).astype(float)
+    # Convert to log-weights by adding randomness and taking log
+    # This gives us a log-normal distribution of weights
+    noise = np.random.randn(N, N) * 0.5  # Add some noise for randomness
+    log_weights = np.log(affinity + 1e-16) + noise
 
-    # 3. Generate node strengths using similar approach for correlation
+    # Compute density directly from log-weights
+    soft_adjacency = 1.0 / (1.0 + np.exp(-beta_degree * (log_weights - threshold_degree)))
+    initial_density = np.mean(soft_adjacency) * 100
+    print(f"Initial log-weight matrix density: {initial_density:.4f}%")
+
+    # 3. Scale log_weights to match target density
+    # Try to determine the scaling factor needed to match target density
+    # We'll use binary search to find the right offset
+    target_offset = 0.0
+    low_offset = -10.0
+    high_offset = 10.0
+    max_iterations = 15
+
+    for _ in range(max_iterations):
+        mid_offset = (low_offset + high_offset) / 2
+        test_log_weights = log_weights + mid_offset
+
+        # Compute density with this offset
+        test_soft_adjacency = 1.0 / (
+            1.0 + np.exp(-beta_degree * (test_log_weights - threshold_degree))
+        )
+        test_density = np.mean(test_soft_adjacency) * 100
+
+        # Check if we're close enough
+        if abs(test_density - target_density) < 0.1:
+            target_offset = mid_offset
+            break
+
+        # Update search bounds
+        if test_density > target_density:
+            high_offset = mid_offset
+        else:
+            low_offset = mid_offset
+
+        target_offset = mid_offset
+
+    # Apply the found offset to log_weights
+    log_weights = log_weights + target_offset
+
+    # Verify density at this point
+    soft_adjacency = 1.0 / (1.0 + np.exp(-beta_degree * (log_weights - threshold_degree)))
+    adjusted_density = np.mean(soft_adjacency) * 100
+    print(f"Adjusted log-weight matrix density: {adjusted_density:.4f}%")
+
+    # 4. Adjust strengths to match target in/out strength distributions
+    # Now add node-specific strength scalings to match strength distributions
+    # Generate strength scales with appropriate correlation
     sigma_in_str = np.sqrt(2 / abs(in_strength_hill))
     sigma_out_str = np.sqrt(2 / abs(out_strength_hill))
 
-    # Create correlation matrix for in/out strengths
+    # Create covariance matrix for in/out strengths
     cov_str = np.array(
         [
             [sigma_in_str**2, target_str_corr * sigma_in_str * sigma_out_str],
@@ -108,48 +157,23 @@ def initialize_from_target_power_laws(config):
 
     # Generate correlated log strengths
     log_strengths = np.random.multivariate_normal(mean=[0, 0], cov=cov_str, size=N)
-    in_strengths = np.exp(log_strengths[:, 0])
-    out_strengths = np.exp(log_strengths[:, 1])
+    in_strength_scales = np.exp(log_strengths[:, 0])
+    out_strength_scales = np.exp(log_strengths[:, 1])
 
-    # Normalize strengths for reasonable values
-    in_strengths = in_strengths / np.mean(in_strengths) * 10  # Mean = 10
-    out_strengths = out_strengths / np.mean(out_strengths) * 10  # Mean = 10
+    # Normalize scales
+    in_strength_scales = in_strength_scales / np.mean(in_strength_scales)
+    out_strength_scales = out_strength_scales / np.mean(out_strength_scales)
 
-    # 4. Create weight matrix - distribute strengths along existing edges
-    weight_matrix = np.zeros((N, N))
-
-    # Efficient strength distribution
+    # Apply strength scales to log_weights
+    # Add out-strength scaling to rows
     for i in range(N):
-        out_neighbors = np.where(adjacency[i] > 0)[0]
-        if len(out_neighbors) > 0:
-            # Distribute out-strength proportionally to all out neighbors
-            weight_matrix[i, out_neighbors] = out_strengths[i] / len(out_neighbors)
+        log_weights[i, :] = log_weights[i, :] + np.log(out_strength_scales[i])
 
-    # One iteration of column normalization to better match in-strengths
+    # Add in-strength scaling to columns
     for j in range(N):
-        in_neighbors = np.where(adjacency[:, j] > 0)[0]
-        if len(in_neighbors) > 0:
-            # Scale the incoming weights to match the target in-strength
-            current_in_strength = weight_matrix[:, j].sum()
-            if current_in_strength > 0:
-                weight_matrix[:, j] = weight_matrix[:, j] * (in_strengths[j] / current_in_strength)
+        log_weights[:, j] = log_weights[:, j] + np.log(in_strength_scales[j])
 
-    # 5. Take log and perform SVD
-    eps = 1e-20  # Small value to avoid log(0)
-    log_weights = np.log(weight_matrix + eps)
-
-    # Check density of weight matrix using the sigmoid approach from stats.py
-    soft_adjacency = 1.0 / (1.0 + np.exp(-beta_degree * (log_weights - threshold_degree)))
-    realized_density = np.mean(soft_adjacency) * 100
-    print(
-        f"Initial weight matrix density: {realized_density:.4f}%; {np.mean(weight_matrix > 0):.4f}"
-    )
-
-    # Double-check density after exp(log_weights)
-    reconstructed_density = np.mean(soft_adjacency > 1e-16) * 100
-    print(f"Reconstructed weights density: {reconstructed_density:.4f}%")
-
-    # Perform SVD efficiently
+    # 5. Perform SVD on the log_weights matrix
     from scipy.sparse.linalg import svds
 
     # Use full SVD for small matrices, svds for large ones
@@ -168,12 +192,17 @@ def initialize_from_target_power_laws(config):
         S = S[idx]
         Vt = Vt[idx, :]
 
+    # Calculate explained variance
+    total_variance = np.sum(S**2)
+    explained_variance = np.sum(S[:M] ** 2) / total_variance
+    print(f"SVD explains {explained_variance:.2%} of variance with {M} components")
+
     # Initialize the model parameters
     alpha_init = np.ones(M)
     U_init = np.zeros((M, N))
     V_init = np.zeros((M, N))
 
-    # Fill with available SVD components
+    # Fill with SVD components
     M_actual = min(M, len(S))
     for i in range(M_actual):
         scale = np.sqrt(S[i])
@@ -188,19 +217,18 @@ def initialize_from_target_power_laws(config):
             U_init[i] = np.random.randn(N) * 0.01
             V_init[i] = np.random.randn(N) * 0.01
 
-    # Final verification of reconstruction
-    final_reconstructed = np.zeros((N, N))
+    # Final verification: reconstruct log_weights and check density
+    reconstructed = np.zeros((N, N))
     for i in range(M):
-        final_reconstructed += alpha_init[i] * np.outer(U_init[i], V_init[i])
+        reconstructed += alpha_init[i] * np.outer(U_init[i], V_init[i])
 
-    # Check final density after SVD reconstruction
-    final_weights = np.exp(final_reconstructed)
-    soft_adjacency = 1 / (1 + np.exp(-beta_degree * (final_weights - threshold_degree)))
+    # Check final density
+    soft_adjacency = 1.0 / (1.0 + np.exp(-beta_degree * (reconstructed - threshold_degree)))
     final_density = np.mean(soft_adjacency) * 100
-    print(f"Final log-weight matrix density: {final_density:.4f}%")
+    print(f"Final reconstructed log-weight density: {final_density:.4f}%")
 
     # Compute reconstruction error
-    error = np.mean((final_reconstructed - log_weights) ** 2)
+    error = np.mean((reconstructed - log_weights) ** 2)
     print(f"SVD reconstruction error: {error:.4f}")
 
     return alpha_init, U_init, V_init

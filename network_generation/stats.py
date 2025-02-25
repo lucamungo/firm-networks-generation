@@ -1,20 +1,21 @@
-"""Statistical computations for network analysis.
+"""Updated statistical computations for network analysis.
 
 This module provides functions for computing various network statistics,
 including degrees, strengths, correlations, and aggregated matrices.
+All functions now consistently work with log-weights where appropriate.
 """
 
 import torch
 
 
 def compute_degrees(
-    W: torch.Tensor, beta_degree: float, dim: int = 1, eps: float = 1e-16, threshold: float = 1e-5
+    M: torch.Tensor, beta_degree: float, dim: int = 1, eps: float = 1e-16, threshold: float = 1e-5
 ) -> torch.Tensor:
     """
-    Compute soft degrees of a weighted adjacency matrix.
+    Compute soft degrees of a log-weighted adjacency matrix.
 
     Args:
-        W: Weighted adjacency matrix of shape (N, N)
+        M: Log-weight matrix of shape (N, N)
         beta_degree: Temperature parameter for softmax
         dim: Dimension to sum over (1 for in-degree, 0 for out-degree)
         threshold: Threshold for soft degree computation
@@ -23,55 +24,58 @@ def compute_degrees(
     Returns:
         Tensor of shape (N,) containing the soft degrees
     """
-    if not isinstance(W, torch.Tensor):
-        raise TypeError("W must be a torch.Tensor")
+    if not isinstance(M, torch.Tensor):
+        raise TypeError("M must be a torch.Tensor")
 
-    if W.dim() != 2 or W.shape[0] != W.shape[1]:
-        raise ValueError("W must be a square matrix")
+    if M.dim() != 2 or M.shape[0] != M.shape[1]:
+        raise ValueError("M must be a square matrix")
 
     if dim not in [0, 1]:
         raise ValueError("dim must be 0 or 1")
 
-    # Apply sigmoid with temperature
-    soft_adjacency = torch.sigmoid(beta_degree * (W - threshold))
+    # Apply sigmoid with temperature directly to log-weights
+    soft_adjacency = torch.sigmoid(beta_degree * (M - threshold))
 
     # Sum over specified dimension and add eps for numerical stability
     return torch.sum(soft_adjacency, dim=dim) + eps
 
 
 def compute_strengths(
-    W: torch.Tensor,
+    M: torch.Tensor,
     beta: float = 5.0,
     threshold: float = 1e-5,
     dim: int = 1,
     eps: float = 1e-16,
 ) -> torch.Tensor:
     """
-    Compute node strengths of a weighted adjacency matrix.
+    Compute node strengths of a log-weighted adjacency matrix.
 
     Args:
-        W: Weighted adjacency matrix of shape (N, N)
-        dim: Dimension to sum over (1 for in-strength, 0 for out-strength)
+        M: Log-weight matrix of shape (N, N)
         beta: Temperature parameter for softmax
         threshold: Threshold for soft degree computation
+        dim: Dimension to sum over (1 for in-strength, 0 for out-strength)
         eps: Small value to add for numerical stability
 
     Returns:
         Tensor of shape (N,) containing the node strengths
     """
-    if not isinstance(W, torch.Tensor):
-        raise TypeError("W must be a torch.Tensor")
+    if not isinstance(M, torch.Tensor):
+        raise TypeError("M must be a torch.Tensor")
 
-    if W.dim() != 2 or W.shape[0] != W.shape[1]:
-        raise ValueError("W must be a square matrix")
+    if M.dim() != 2 or M.shape[0] != M.shape[1]:
+        raise ValueError("M must be a square matrix")
 
     if dim not in [0, 1]:
         raise ValueError("dim must be 0 or 1")
 
-    # Compute strengths with numerical stability
-    # Apply sigmoid with temperature
-    soft_adjacency = torch.sigmoid(beta * (W - threshold))
+    # Get weight matrix for strengths (but keep soft masking using log-weights)
+    W = torch.exp(M)
 
+    # Compute soft adjacency directly on log-weights for consistency
+    soft_adjacency = torch.sigmoid(beta * (M - threshold))
+
+    # Apply soft mask to weights
     soft_masked_W = soft_adjacency * W
 
     return torch.sum(soft_masked_W, dim=dim) + eps
@@ -89,6 +93,7 @@ def compute_log_correlation(x: torch.Tensor, y: torch.Tensor, eps: float = 1e-16
     Returns:
         Scalar tensor containing the correlation coefficient
     """
+    # This function remains unchanged
     if not (isinstance(x, torch.Tensor) and isinstance(y, torch.Tensor)):
         raise TypeError("x and y must be torch.Tensor")
 
@@ -113,13 +118,13 @@ def compute_log_correlation(x: torch.Tensor, y: torch.Tensor, eps: float = 1e-16
 
 
 def compute_io_matrix(
-    W: torch.Tensor, group_matrix: torch.Tensor, eps: float = 1e-16
+    M: torch.Tensor, group_matrix: torch.Tensor, eps: float = 1e-16
 ) -> torch.Tensor:
     """
     Compute aggregated input-output matrix by groups.
 
     Args:
-        W: Weighted adjacency matrix of shape (N, N)
+        M: Log-weight matrix of shape (N, N)
         group_matrix: Binary matrix of shape (G, N) where G is number of groups
                      group_matrix[i,j] = 1 if node j belongs to group i
         eps: Small value to add for numerical stability
@@ -127,13 +132,13 @@ def compute_io_matrix(
     Returns:
         Tensor of shape (G, G) containing the aggregated IO matrix
     """
-    if not isinstance(W, torch.Tensor) or not isinstance(group_matrix, torch.Tensor):
-        raise TypeError("W and group_matrix must be torch.Tensor")
+    if not isinstance(M, torch.Tensor) or not isinstance(group_matrix, torch.Tensor):
+        raise TypeError("M and group_matrix must be torch.Tensor")
 
-    if W.dim() != 2 or W.shape[0] != W.shape[1]:
-        raise ValueError("W must be a square matrix")
+    if M.dim() != 2 or M.shape[0] != M.shape[1]:
+        raise ValueError("M must be a square matrix")
 
-    if group_matrix.dim() != 2 or group_matrix.shape[1] != W.shape[0]:
+    if group_matrix.dim() != 2 or group_matrix.shape[1] != M.shape[0]:
         raise ValueError("group_matrix must be a GxN matrix where N is number of nodes")
 
     # Check if group assignments are valid (each node belongs to exactly one group)
@@ -141,6 +146,8 @@ def compute_io_matrix(
     if not torch.all(node_group_sums == 1):
         raise ValueError("Each node must belong to exactly one group")
 
+    # Convert log-weights to weights for IO matrix calculation
+    W = torch.exp(M)
     group_matrix = group_matrix.to(dtype=W.dtype)
 
     # Compute aggregated matrix: group_matrix @ W @ group_matrix.T
@@ -167,6 +174,7 @@ def compute_ccdf(
     Returns:
         CCDF values at each threshold [M]
     """
+    # This function remains unchanged
     if not isinstance(values, torch.Tensor) or not isinstance(thresholds, torch.Tensor):
         raise TypeError("values and thresholds must be torch.Tensor")
 
@@ -217,6 +225,7 @@ def compute_smoothness_penalty(
     Returns:
         Scalar tensor containing the smoothness penalty
     """
+    # This function remains unchanged
     if not isinstance(ccdf_values, torch.Tensor) or not isinstance(thresholds, torch.Tensor):
         raise TypeError("ccdf_values and thresholds must be torch.Tensor")
 
@@ -261,18 +270,43 @@ def compute_smoothness_penalty(
 
 
 def compute_density(
-    W: torch.Tensor, beta: float = 1.0, threshold: float = 1e-5, eps: float = 1e-16
+    M: torch.Tensor, beta: float = 1.0, threshold: float = 1e-5, eps: float = 1e-16
 ):
     """
-    Compute density of a weighted adjacency matrix.
+    Compute density of a log-weight network matrix.
+
+    Args:
+        M: Log-weight matrix of shape (N, N)
+        beta: Temperature parameter for soft thresholding
+        threshold: Threshold value for soft thresholding
+        eps: Small value for numerical stability
+
+    Returns:
+        Density as a percentage
     """
-    if not isinstance(W, torch.Tensor):
-        raise TypeError("W must be a torch.Tensor")
+    if not isinstance(M, torch.Tensor):
+        raise TypeError("M must be a torch.Tensor")
 
-    if W.dim() != 2 or W.shape[0] != W.shape[1]:
-        raise ValueError("W must be a square matrix")
+    if M.dim() != 2 or M.shape[0] != M.shape[1]:
+        raise ValueError("M must be a square matrix")
 
-    # Apply sigmoid with temperature
-    soft_adjacency = torch.sigmoid(beta * (W - threshold))
+    # Apply sigmoid with temperature directly to log-weights
+    soft_adjacency = torch.sigmoid(beta * (M - threshold))
 
     return torch.mean(soft_adjacency) * 100
+
+
+def compute_small_degrees(
+    M: torch.Tensor, beta: float, threshold: float = 1e-5, eps: float = 1e-16
+):
+    """
+    Computes the number of nodes with zero in or out degrees.
+    """
+
+    in_degree = compute_degrees(M, beta, dim=0, threshold=threshold, eps=eps)
+    out_degree = compute_degrees(M, beta, dim=1, threshold=threshold, eps=eps)
+
+    # Count the nodes having in_degree + out_degree < 1; use a sigmoid to avoid sharp thresholding
+    small_degrees = 1.0 - torch.sigmoid(beta * (in_degree + out_degree - 1))
+
+    return torch.sum(small_degrees)

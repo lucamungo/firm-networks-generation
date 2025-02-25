@@ -2,6 +2,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 
 from network_generation.stats import compute_degrees, compute_strengths
 
@@ -36,30 +37,43 @@ def plot_distributions(
     # Original network distributions
     in_degrees_orig = (W_original > 0).sum(dim=0).detach().numpy()
     out_degrees_orig = (W_original > 0).sum(dim=1).detach().numpy()
-    in_strengths_orig = compute_strengths(W_original, dim=0).detach().numpy()
-    out_strengths_orig = compute_strengths(W_original, dim=1).detach().numpy()
+    in_strengths_orig = (W_original * (W_original > 0)).sum(dim=0).detach().numpy()
+    out_strengths_orig = (W_original * (W_original > 0)).sum(dim=1).detach().numpy()
 
     # Generated network distributions
-    in_degrees_gen = (
-        compute_degrees(W=W_generated, beta_degree=beta_degree, threshold=threshold_degree, dim=0)
-        .detach()
-        .numpy()
-    )
-    out_degrees_gen = (
-        compute_degrees(W=W_generated, beta_degree=beta_degree, threshold=threshold_degree, dim=1)
-        .detach()
-        .numpy()
-    )
-    in_strengths_gen = (
-        compute_strengths(W_generated, beta=beta_degree, threshold=threshold_degree, dim=0)
-        .detach()
-        .numpy()
-    )
-    out_strengths_gen = (
-        compute_strengths(W_generated, beta=beta_degree, threshold=threshold_degree, dim=1)
-        .detach()
-        .numpy()
-    )
+    M_generated = torch.log(W_generated)
+    M_generated[M_generated < threshold_degree] = -20
+
+    # in_degrees_gen = (
+    #     compute_degrees(M=M_generated, beta_degree=beta_degree, threshold=threshold_degree, dim=0)
+    #     .detach()
+    #     .numpy()
+    # )
+    # out_degrees_gen = (
+    #     compute_degrees(M=M_generated, beta_degree=beta_degree, threshold=threshold_degree, dim=1)
+    #     .detach()
+    #     .numpy()
+    # )
+    # in_strengths_gen = (
+    #     compute_strengths(M_generated, beta=beta_degree, threshold=threshold_degree, dim=0)
+    #     .detach()
+    #     .numpy()
+    # )
+    # out_strengths_gen = (
+    #     compute_strengths(M_generated, beta=beta_degree, threshold=threshold_degree, dim=1)
+    #     .detach()
+    #     .numpy()
+    # )
+
+    in_degrees_gen = (M_generated > threshold_degree).sum(dim=0).detach().numpy()
+    out_degrees_gen = (M_generated > threshold_degree).sum(dim=1).detach().numpy()
+    in_strengths_gen = ((M_generated > threshold_degree) * W_generated).sum(dim=0).detach().numpy()
+    out_strengths_gen = ((M_generated > threshold_degree) * W_generated).sum(dim=1).detach().numpy()
+
+    in_degrees_gen = in_degrees_gen[in_degrees_gen > 0]
+    out_degrees_gen = out_degrees_gen[out_degrees_gen > 0]
+    in_strengths_gen = in_strengths_gen[in_strengths_gen > 0]
+    out_strengths_gen = out_strengths_gen[out_strengths_gen > 0]
 
     # Function to plot distribution with Hill threshold markers
     def plot_dist(ax, orig_values, gen_values, init_values=None, title=""):
@@ -84,19 +98,25 @@ def plot_distributions(
         return line1, line2, line3 if init_values is not None else None
 
     # Plot all distributions
+    if W_initial is not None:
+        M_initial = torch.log(W_initial)
+        in_degree_initial = (M_initial > threshold_degree).sum(dim=0).detach().numpy()
+        out_degree_initial = (M_initial > threshold_degree).sum(dim=1).detach().numpy()
+        in_strengths_initial = ((M_initial > threshold_degree) * W_initial).sum(dim=0).detach().numpy()
+        out_strengths_initial = (
+            ((M_initial > threshold_degree) * W_initial).sum(dim=1).detach().numpy()
+        )
+    else:
+        in_degree_initial = None
+        out_degree_initial = None
+        in_strengths_initial = None
+        out_strengths_initial = None
+
     lines = plot_dist(
         axes[0, 0],
         in_degrees_orig,
         in_degrees_gen,
-        init_values=(
-            None
-            if W_initial is None
-            else compute_degrees(
-                W=W_initial, beta_degree=beta_degree, threshold=threshold_degree, dim=0
-            )
-            .detach()
-            .numpy()
-        ),
+        init_values=in_degree_initial,
         title="In-degree Distribution",
     )
     axes[0, 0].set_xlabel("In-degree")
@@ -106,15 +126,7 @@ def plot_distributions(
         axes[0, 1],
         out_degrees_orig,
         out_degrees_gen,
-        init_values=(
-            None
-            if W_initial is None
-            else compute_degrees(
-                W=W_initial, beta_degree=beta_degree, threshold=threshold_degree, dim=1
-            )
-            .detach()
-            .numpy()
-        ),
+        init_values=out_degree_initial,
         title="Out-degree Distribution",
     )
     axes[0, 1].set_xlabel("Out-degree")
@@ -124,13 +136,7 @@ def plot_distributions(
         axes[1, 0],
         in_strengths_orig,
         in_strengths_gen,
-        init_values=(
-            None
-            if W_initial is None
-            else compute_strengths(W_initial, beta=beta_degree, threshold=threshold_degree, dim=0)
-            .detach()
-            .numpy()
-        ),
+        init_values=in_strengths_initial,
         title="In-strength Distribution",
     )
     axes[1, 0].set_xlabel("In-strength")
@@ -140,13 +146,7 @@ def plot_distributions(
         axes[1, 1],
         out_strengths_orig,
         out_strengths_gen,
-        init_values=(
-            None
-            if W_initial is None
-            else compute_strengths(W_initial, beta=beta_degree, threshold=threshold_degree, dim=1)
-            .detach()
-            .numpy()
-        ),
+        init_values=out_strengths_initial,
         title="Out-strength Distribution",
     )
     axes[1, 1].set_xlabel("Out-strength")

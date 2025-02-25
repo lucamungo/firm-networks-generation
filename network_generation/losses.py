@@ -2,6 +2,7 @@
 
 This module provides functions for computing various loss terms and combining
 them into a single differentiable loss for network generation.
+All functions now consistently work with log-weights directly.
 """
 
 import logging
@@ -17,6 +18,7 @@ from .stats import (
     compute_density,
     compute_io_matrix,
     compute_log_correlation,
+    compute_small_degrees,
     compute_smoothness_penalty,
     compute_strengths,
 )
@@ -46,14 +48,11 @@ def compute_correlation_loss(
             - Total correlation loss
             - Dictionary of individual correlation losses
     """
-    # Get weight matrix
-    W = torch.exp(M)
-
-    # Compute degrees and strengths
-    in_degrees = compute_degrees(W, beta_degree, dim=0, threshold=threshold_degree)
-    out_degrees = compute_degrees(W, beta_degree, dim=1, threshold=threshold_degree)
-    in_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold_degree, dim=0)
-    out_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold_degree, dim=1)
+    # Compute degrees and strengths directly from log-weights M
+    in_degrees = compute_degrees(M, beta_degree, dim=0, threshold=threshold_degree)
+    out_degrees = compute_degrees(M, beta_degree, dim=1, threshold=threshold_degree)
+    in_strengths = compute_strengths(M, beta=beta_degree, threshold=threshold_degree, dim=0)
+    out_strengths = compute_strengths(M, beta=beta_degree, threshold=threshold_degree, dim=1)
 
     # Initialize losses
     correlation_losses = {}
@@ -115,14 +114,11 @@ def compute_hill_losses(
             - Total Hill exponent loss
             - Dictionary of individual Hill losses
     """
-    # Get weight matrix
-    W = torch.exp(M)
-
-    # Compute degrees and strengths
-    in_degrees = compute_degrees(W, beta_degree, threshold=threshold_degree, dim=0)
-    out_degrees = compute_degrees(W, beta_degree, threshold=threshold_degree, dim=1)
-    in_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold_degree, dim=0)
-    out_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold_degree, dim=1)
+    # Compute degrees and strengths directly from log-weights M
+    in_degrees = compute_degrees(M, beta_degree, threshold=threshold_degree, dim=0)
+    out_degrees = compute_degrees(M, beta_degree, threshold=threshold_degree, dim=1)
+    in_strengths = compute_strengths(M, beta=beta_degree, threshold=threshold_degree, dim=0)
+    out_strengths = compute_strengths(M, beta=beta_degree, threshold=threshold_degree, dim=1)
 
     # Initialize losses
     hill_losses = {}
@@ -190,14 +186,11 @@ def compute_io_loss(
     Returns:
         Loss measuring deviation from target IO matrix
     """
-    # Get weight matrix
-    W = torch.exp(M)
-
-    # Cast group_matrix to same dtype as W
-    group_matrix = group_matrix.to(dtype=W.dtype)
+    # Cast group_matrix to same dtype as M
+    group_matrix = group_matrix.to(dtype=M.dtype)
 
     # Compute aggregated IO matrix
-    io_matrix = compute_io_matrix(W, group_matrix, eps)
+    io_matrix = compute_io_matrix(M, group_matrix, eps)
 
     # Compute loss in log space
     log_io = torch.log(io_matrix + eps)
@@ -234,14 +227,11 @@ def compute_smoothness_loss(
             - Total smoothness loss
             - Dictionary of individual smoothness losses
     """
-    # Get weight matrix
-    W = torch.exp(M)
-
-    # Compute degrees and strengths
-    in_degrees = compute_degrees(W, beta_degree, dim=0, threshold=threshold_degree)
-    out_degrees = compute_degrees(W, beta_degree, dim=1, threshold=threshold_degree)
-    in_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold_degree, dim=0)
-    out_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold_degree, dim=1)
+    # Compute degrees and strengths directly from log-weights M
+    in_degrees = compute_degrees(M, beta_degree, dim=0, threshold=threshold_degree)
+    out_degrees = compute_degrees(M, beta_degree, dim=1, threshold=threshold_degree)
+    in_strengths = compute_strengths(M, beta=beta_degree, threshold=threshold_degree, dim=0)
+    out_strengths = compute_strengths(M, beta=beta_degree, threshold=threshold_degree, dim=1)
 
     # Initialize losses
     smoothness_losses = {}
@@ -260,7 +250,7 @@ def compute_smoothness_loss(
         # Use differentiable min and max:
         # t_min = torch.min(values)
         # t_max = torch.max(values)
-        t_min = 1.0
+        t_min = 1e-2
         t_max = 1e3
         # Create a linearly spaced tensor in [0, 1]
         # t = torch.linspace(0, 1, num_points, device=M.device, dtype=values.dtype)
@@ -299,7 +289,7 @@ def compute_sparsity_loss(
 
     Args:
         M: Log-weight matrix of shape (N, N)
-        target_sparsity: Target density value between 0 and 1, or None to disable density loss
+        target_sparsity: Target density value between 0 and 100, or None to disable density loss
         beta: Temperature parameter for soft thresholding
         threshold: Threshold value for soft thresholding
         eps: Small value for numerical stability
@@ -313,10 +303,8 @@ def compute_sparsity_loss(
     if not (0 <= target_sparsity <= 100):
         raise ValueError("Target density must be between 0 and 100")
 
-    # Convert to weights matrix first
-    W = torch.exp(M)
-
-    sparsity = compute_density(W, beta, threshold, eps)
+    # Compute density directly from log-weights
+    sparsity = compute_density(M, beta, threshold, eps)
 
     # Compute loss as squared difference from target
     loss = (sparsity - target_sparsity) ** 2
@@ -339,20 +327,19 @@ def compute_continuity_loss(
     Compute continuity loss of a 1D tensor.
 
     Args:
-        values: Input values [N]
+        M: Log-weight matrix of shape (N, N)
+        beta_degree: Temperature parameter for soft degree computation
+        threshold_degree: Threshold for degree computation
         eps: Small value for numerical stability
 
     Returns:
         Loss value
     """
-    # Get weight matrix
-    W = torch.exp(M)
-
-    # Compute degrees and strengths
-    in_degrees = compute_degrees(W, beta_degree, dim=0, threshold=threshold_degree)
-    out_degrees = compute_degrees(W, beta_degree, dim=1, threshold=threshold_degree)
-    in_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold_degree, dim=0)
-    out_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold_degree, dim=1)
+    # Compute degrees and strengths directly from log-weights M
+    in_degrees = compute_degrees(M, beta_degree, dim=0, threshold=threshold_degree)
+    out_degrees = compute_degrees(M, beta_degree, dim=1, threshold=threshold_degree)
+    in_strengths = compute_strengths(M, beta=beta_degree, threshold=threshold_degree, dim=0)
+    out_strengths = compute_strengths(M, beta=beta_degree, threshold=threshold_degree, dim=1)
 
     # Initialize losses
     total_loss = torch.tensor(0.0, device=M.device)
@@ -379,6 +366,16 @@ def compute_continuity_loss(
         total_loss += torch.sum(dy * dy) / dy.std()
 
     return total_loss
+
+
+def compute_disconnection_loss(
+    M: torch.Tensor,
+    beta_degree: float,
+    threshold_degree: float = 1e-5,
+    eps: float = 1e-16,
+) -> torch.Tensor:
+
+    return compute_small_degrees(M, beta_degree, threshold_degree, eps)
 
 
 def compute_loss(
@@ -422,11 +419,13 @@ def compute_loss(
     target_sparsity = config.get("density_target", None)
 
     if "density" not in weights:
-        print("AAA")
         weights["density"] = 0.0
 
     if "continuity" not in weights:
         weights["continuity"] = 0.0
+
+    if "disconnection" not in weights:
+        weights["disconnection"] = 0.0
 
     # Compute partial losses
     correlation_loss, corr_losses = compute_correlation_loss(
@@ -465,11 +464,15 @@ def compute_loss(
         target_sparsity=target_sparsity,
         beta=beta_degree,
         threshold=threshold_degree,
-        eps=1e-16,
+        eps=eps,
     )
 
     continuity_loss = compute_continuity_loss(
-        M, beta_degree=beta_degree, threshold_degree=threshold_degree, eps=1e-16
+        M, beta_degree=beta_degree, threshold_degree=threshold_degree, eps=eps
+    )
+
+    disconnection_loss = compute_disconnection_loss(
+        M, beta_degree=beta_degree, threshold_degree=threshold_degree, eps=eps
     )
 
     # Use more stable normalization
@@ -480,6 +483,7 @@ def compute_loss(
         smooth_scale = 1.0 + smoothness_loss.detach()
         density_scale = 1.0 + density_loss.detach()
         continuity_scale = 1.0 + continuity_loss.detach()
+        disconnect_scale = 1.0 + disconnection_loss.detach()
 
     # Combine normalized losses with weights
     weighted_loss = (
@@ -489,6 +493,7 @@ def compute_loss(
         + weights["smooth"] * smoothness_loss / smooth_scale
         + weights["density"] * density_loss / density_scale
         + weights["continuity"] * continuity_loss / continuity_scale
+        + weights["disconnection"] * disconnection_loss / disconnect_scale
     )
     weights_sum = sum(weights.values())
     total_loss = weighted_loss / weights_sum
@@ -500,6 +505,8 @@ def compute_loss(
         "io": io_loss,
         "smooth": smoothness_loss,
         "density": density_loss,
+        "continuity": continuity_loss,
+        "disconnection": disconnection_loss,
         **{f"correlation_{k}": v for k, v in corr_losses.items()},
         **{f"hill_{k}": v for k, v in hill_losses.items()},
         **{f"smooth_{k}": v for k, v in smooth_losses.items()},

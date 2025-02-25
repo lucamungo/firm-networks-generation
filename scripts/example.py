@@ -1,3 +1,9 @@
+"""Example for network generation with updated methods.
+
+This script demonstrates the use of the updated network generation model
+with consistent log-weight density calculation.
+"""
+
 import argparse
 import json
 from pathlib import Path
@@ -8,15 +14,14 @@ from macrocosm_visual.viz_setup import setup_matplotlib
 
 from network_generation.hill_exponent import compute_hill_exponent
 from network_generation.losses import compute_loss
-from network_generation.model import CSHNetworkGenerator, EnhancedNetworkGenerator, NetworkGenerator
+from network_generation.model import CSHNetworkGenerator, NetworkGenerator
 from network_generation.stats import (
     compute_degrees,
-    compute_density,
     compute_io_matrix,
     compute_log_correlation,
     compute_strengths,
 )
-from network_generation.train import train_model, train_model_progressive
+from network_generation.train import train_model, train_model_progressive, train_model_progressive_with_dropout
 from scripts.utils.analysis import print_comparison_table, print_loss_comparison
 from scripts.utils.viz import generate_plots
 
@@ -44,7 +49,7 @@ def generate_synthetic_network(N=1000, density=0.1, mu=0.0, sigma=1.0):
 
     # Take row sums to compute total strength
     total_strength = weights.sum(dim=1)
-    log_strength = torch.log(total_strength + 1e-16)
+    log_strength = torch.log(total_strength + 1e-8)
 
     # Sample log_degrees; log_degree and log_strength should have a correlation of 0.5
     log_degree = log_strength + 0.5 * torch.randn(N)
@@ -73,11 +78,12 @@ def compute_network_properties(
 ):
     """Compute various network properties."""
     # Compute degrees and strengths
+    M = torch.log(W + eps)
     if soft_approx:
-        in_degrees = compute_degrees(W, beta_degree, threshold=threshold, dim=0)
-        out_degrees = compute_degrees(W, beta_degree, threshold=threshold, dim=1)
-        in_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold, dim=0)
-        out_strengths = compute_strengths(W, beta=beta_degree, threshold=threshold, dim=1)
+        in_degrees = compute_degrees(M, beta_degree, threshold=threshold, dim=0)
+        out_degrees = compute_degrees(M, beta_degree, threshold=threshold, dim=1)
+        in_strengths = compute_strengths(M, beta=beta_degree, threshold=threshold, dim=0)
+        out_strengths = compute_strengths(M, beta=beta_degree, threshold=threshold, dim=1)
     else:
         in_degrees = (W > 0).sum(dim=0)
         out_degrees = (W > 0).sum(dim=1)
@@ -113,7 +119,7 @@ def compute_network_properties(
         group_matrix[int(i), firms] = 1
 
     # Compute IO matrix
-    io_matrix = compute_io_matrix(W, group_matrix)
+    io_matrix = compute_io_matrix(torch.log(W), group_matrix)
 
     # Compute density
     density = in_degrees.sum() / (N * N) * 100
@@ -172,8 +178,9 @@ def create_config(properties, N, M=10, num_epochs=3000, num_cycles=1):
             "hill": 1.0,
             "io": 5.0,
             "smooth": 1.0,
-            "density": 1.0,
-            "continuity": 1.0,
+            "density": 0.1,
+            "continuity": 100.0,
+            "disconnection": 1.0,
         },
         "training_phases": [
             {
@@ -183,92 +190,86 @@ def create_config(properties, N, M=10, num_epochs=3000, num_cycles=1):
                     "correlation": 0.0,
                     "hill": 0.0,
                     "io": 0.00,
-                    "smooth": 0.0,
-                    "density": 10000.0,
+                    "smooth": 1.0,
+                    "density": 1.0,
                     "continuity": 0.0,
+                    "disconnection": 1.0,
                 },
             },
-            # {
-            #     "name": "IO Matrix",
-            #     "epochs": epochs_per_phase,
-            #     "weights": {
-            #         "correlation": 0.0,
-            #         "hill": 0.0,
-            #         "io": 1.0,
-            #         "smooth": 0.0,
-            #         "density": 0.0,
-            #         "continuity": 0.0,
-            #     },
-            # },
-            # {
-            #     "name": "Correlations",
-            #     "epochs": epochs_per_phase,
-            #     "weights": {
-            #         "correlation": 1.0,
-            #         "hill": 0.0,
-            #         "io": 0.5,
-            #         "smooth": 0.0,
-            #         "density": 0.0,
-            #         "continuity": 0.0,
-            #     },
-            # },
-            # {
-            #     "name": "Hill Exponents",
-            #     "epochs": epochs_per_phase,
-            #     "weights": {
-            #         "correlation": 0.1,
-            #         "hill": 1.0,
-            #         "io": 0.5,
-            #         "smooth": 0.0,
-            #         "density": 0.0,
-            #         "continuity": 0.0,
-            #     },
-            # },
-            # {
-            #     "name": "Smoothness",
-            #     "epochs": epochs_per_phase,
-            #     "weights": {
-            #         "correlation": 0.1,
-            #         "hill": 0.1,
-            #         "io": 0.1,
-            #         "smooth": 1.0,
-            #         "density": 0.0,
-            #         "continuity": 0.0,
-            #     },
-            # },
-            # {
-            #     "name": "Continuity",
-            #     "epochs": epochs_per_phase,
-            #     "weights": {
-            #         "continuity": 1.0,
-            #         "correlation": 0.0,
-            #         "hill": 0.0,
-            #         "io": 0.01,
-            #         "smooth": 0.0,
-            #         "density": 1.0,
-            #     },
-            # },
-            # {
-            #     "name": "Fine Tuning",
-            #     "epochs": epochs_per_phase,
-            #     "weights": {
-            #         "correlation": 1.0,
-            #         "hill": 1.0,
-            #         "io": 1.0,
-            #         "smooth": 1.0,
-            #         "density": 1.0,
-            #         "continuity": 1.0,
-            #     },
-            # },
+            {
+                "name": "IO Matrix",
+                "epochs": epochs_per_phase,
+                "weights": {
+                    "correlation": 0.0,
+                    "hill": 0.0,
+                    "io": 1.0,
+                    "smooth": 1.0,
+                    "density": 0.1,
+                    "continuity": 0.0,
+                    "disconnection": 1.0,
+                },
+            },
+            {
+                "name": "Correlations",
+                "epochs": epochs_per_phase,
+                "weights": {
+                    "correlation": 1.0,
+                    "hill": 0.0,
+                    "io": 0.5,
+                    "smooth": 1.0,
+                    "density": 0.1,
+                    "continuity": 0.0,
+                    "disconnection": 1.0,
+                },
+            },
+            {
+                "name": "Hill Exponents",
+                "epochs": epochs_per_phase,
+                "weights": {
+                    "correlation": 0.1,
+                    "hill": 1.0,
+                    "io": 0.5,
+                    "smooth": 1.0,
+                    "density": 0.1,
+                    "continuity": 0.0,
+                    "disconnection": 1.0,
+                },
+            },
+            {
+                "name": "Smoothness",
+                "epochs": epochs_per_phase,
+                "weights": {
+                    "correlation": 0.1,
+                    "hill": 1.0,
+                    "io": 0.1,
+                    "smooth": 10.0,
+                    "density": 0.1,
+                    "continuity": 0.0,
+                    "disconnection": 1.0,
+                },
+            },
+            {
+                "name": "Fine Tuning",
+                "epochs": epochs_per_phase,
+                "weights": {
+                    "correlation": 1.0,
+                    "hill": 1.0,
+                    "io": 1.0,
+                    "smooth": 1.0,
+                    "density": 0.1,
+                    "continuity": 1.0,
+                    "disconnection": 1.0,
+                },
+            },
         ],
         "learning_rate": 0.01,
         "num_epochs": num_epochs,
         "beta_degree": 5.0,
-        "threshold_degree": 0.5,
+        "threshold_degree": 0.0,
         "beta_ccdf": 5.0,
         "beta_tail": 10.0,
         "tail_fraction": 0.05,
-        "num_ccdf_points": 20,
+        "num_ccdf_points": 30,
     }
 
     # Create a JSON-serializable version of the config
@@ -280,7 +281,6 @@ def create_config(properties, N, M=10, num_epochs=3000, num_cycles=1):
 
 
 def main():
-
     # Add argument parsing
     parser = argparse.ArgumentParser(description="Network generation training script.")
     parser.add_argument("--N", type=int, default=1000, help="Number of nodes (default: 1000)")
@@ -314,13 +314,15 @@ def main():
     W_original = generate_synthetic_network(N, density=sparsity)
 
     print("Step 2: Computing network properties...")
-    properties = compute_network_properties(W_original, soft_approx=False)
+    properties = compute_network_properties(
+        W_original, soft_approx=True, beta_degree=5.0, threshold=0.0
+    )
 
     print("\nStep 3: Creating configuration...")
     if args.progressive:
         print(f"Using progressive training with {args.num_cycles} cycles...")
         print(
-            f"Total epochs: {args.epochs} (≈ {args.epochs // (4 * args.num_cycles)} epochs per phase)"
+            f"Total epochs: {args.epochs} (≈ {args.epochs // (6 * args.num_cycles)} epochs per phase)"
         )
         config, json_config = create_config(
             properties, N, num_epochs=args.epochs, num_cycles=args.num_cycles, M=M
@@ -334,20 +336,35 @@ def main():
     with open(config_path, "w") as f:
         json.dump(json_config, f, indent=2)
 
-    # Compute initial losses (use tensor version)
+    # Initialize model
     initial_model = NetworkGenerator(config)
     initial_log_weights = initial_model()
     W_initial = initial_model.get_network_weights()
+
+    # Compute initial properties
+    initial_properties = compute_network_properties(
+        W_initial,
+        soft_approx=True,
+        beta_degree=config["beta_degree"],
+        threshold=config["threshold_degree"],
+    )
+
+    # Compute initial loss
     initial_loss, initial_partial_losses = compute_loss(initial_log_weights, config)
+
+    print("\nInitial Density:")
+    print(f"Target: {properties['density']:.4f}%, Initial: {initial_properties['density']:.4f}%")
 
     print("\nStep 4: Training model...")
     if args.progressive:
-        model, history = train_model_progressive(config_path, num_cycles=args.num_cycles)
+        model, history = train_model_progressive_with_dropout(config_path, num_cycles=args.num_cycles)
     else:
         model, history = train_model(config_path)
 
     print("\nStep 5: Evaluating results...")
+    final_log_weights = model()
     W_generated = model.get_network_weights()
+
     final_properties = compute_network_properties(
         W_generated,
         soft_approx=True,
@@ -356,7 +373,6 @@ def main():
     )
 
     # Compute final losses
-    final_log_weights = model()
     final_loss, final_partial_losses = compute_loss(final_log_weights, config)
 
     # Print formatted results
