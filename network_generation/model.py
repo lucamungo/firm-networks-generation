@@ -3,11 +3,12 @@
 This module implements the core network generation model using matrix factorization
 with learnable parameters.
 """
-import numpy as np
+
 import logging
 from pathlib import Path
 from typing import TypeVar
 
+import numpy as np
 import torch
 import torch.nn as nn
 
