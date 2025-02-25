@@ -238,7 +238,7 @@ def generate_synthetic_network(N=1000, density=0.1, mu=0.0, sigma=1.0):
 
     # Take row sums to compute total strength
     total_strength = weights.sum(dim=1)
-    log_strength = torch.log(total_strength + 1e-8)
+    log_strength = torch.log(total_strength + 1e-16)
 
     # Sample log_degrees; log_degree and log_strength should have a correlation of 0.5
     log_degree = log_strength + 0.5 * torch.randn(N)
@@ -263,7 +263,7 @@ def generate_synthetic_network(N=1000, density=0.1, mu=0.0, sigma=1.0):
 
 
 def compute_network_properties(
-    W, soft_approx: bool = True, beta_degree=10.0, threshold=1e-5, eps=1e-8
+    W, soft_approx: bool = True, beta_degree=10.0, threshold=1e-5, eps=1e-16
 ):
     """Compute various network properties."""
     # Compute degrees and strengths

@@ -29,7 +29,7 @@ def compute_correlation_loss(
     correlation_targets: Dict[str, float],
     beta_degree: float,
     threshold_degree: float = 1e-5,
-    eps: float = 1e-8,
+    eps: float = 1e-16,
 ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
     """
     Compute correlation loss terms.
@@ -94,7 +94,7 @@ def compute_hill_losses(
     threshold_degree: float = 1e-5,
     num_points: int = 20,
     lambda_line: float = 0.1,
-    eps: float = 1e-8,
+    eps: float = 1e-16,
 ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
     """
     Compute Hill exponent loss terms using direct Hill exponent computation.
@@ -176,7 +176,7 @@ def compute_io_loss(
     M: torch.Tensor,
     group_matrix: torch.Tensor,
     io_target: torch.Tensor,
-    eps: float = 1e-8,
+    eps: float = 1e-16,
 ) -> torch.Tensor:
     """
     Compute IO matrix matching loss.
@@ -216,7 +216,7 @@ def compute_smoothness_loss(
     beta_ccdf: float,
     threshold_degree: float = 1e-5,
     num_points: int = 20,
-    eps: float = 1e-8,
+    eps: float = 1e-16,
 ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
     """
     Compute smoothness penalties for all distributions.
@@ -292,7 +292,7 @@ def compute_sparsity_loss(
     target_sparsity: Optional[float],
     beta: float,
     threshold: float = 1e-5,
-    eps: float = 1e-8,
+    eps: float = 1e-16,
 ) -> torch.Tensor:
     """
     Computes the discrepancy between the matrix's sparsity and a target sparsity.
@@ -310,8 +310,8 @@ def compute_sparsity_loss(
     if target_sparsity is None:
         return torch.tensor(0.0, device=M.device)
 
-    if not (0 <= target_sparsity <= 1):
-        raise ValueError("Target density must be between 0 and 1")
+    if not (0 <= target_sparsity <= 100):
+        raise ValueError("Target density must be between 0 and 100")
 
     # Convert to weights matrix first
     W = torch.exp(M)
@@ -333,7 +333,7 @@ def compute_continuity_loss(
     M: torch.Tensor,
     beta_degree: float,
     threshold_degree: float = 1e-5,
-    eps: float = 1e-8,
+    eps: float = 1e-16,
 ) -> torch.Tensor:
     """
     Compute continuity loss of a 1D tensor.
@@ -384,7 +384,7 @@ def compute_continuity_loss(
 def compute_loss(
     M: torch.Tensor,
     config: Dict,
-    eps: float = 1e-8,
+    eps: float = 1e-16,
 ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
     """
     Compute total loss combining all constraints.
@@ -465,11 +465,11 @@ def compute_loss(
         target_sparsity=target_sparsity,
         beta=beta_degree,
         threshold=threshold_degree,
-        eps=1e-8,
+        eps=1e-16,
     )
 
     continuity_loss = compute_continuity_loss(
-        M, beta_degree=beta_degree, threshold_degree=threshold_degree, eps=1e-8
+        M, beta_degree=beta_degree, threshold_degree=threshold_degree, eps=1e-16
     )
 
     # Use more stable normalization

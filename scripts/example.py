@@ -8,7 +8,7 @@ from macrocosm_visual.viz_setup import setup_matplotlib
 
 from network_generation.hill_exponent import compute_hill_exponent
 from network_generation.losses import compute_loss
-from network_generation.model import NetworkGenerator
+from network_generation.model import CSHNetworkGenerator, EnhancedNetworkGenerator, NetworkGenerator
 from network_generation.stats import (
     compute_degrees,
     compute_density,
@@ -44,7 +44,7 @@ def generate_synthetic_network(N=1000, density=0.1, mu=0.0, sigma=1.0):
 
     # Take row sums to compute total strength
     total_strength = weights.sum(dim=1)
-    log_strength = torch.log(total_strength + 1e-8)
+    log_strength = torch.log(total_strength + 1e-16)
 
     # Sample log_degrees; log_degree and log_strength should have a correlation of 0.5
     log_degree = log_strength + 0.5 * torch.randn(N)
@@ -69,7 +69,7 @@ def generate_synthetic_network(N=1000, density=0.1, mu=0.0, sigma=1.0):
 
 
 def compute_network_properties(
-    W, soft_approx: bool = True, beta_degree=10.0, threshold=1e-5, eps=1e-8
+    W, soft_approx: bool = True, beta_degree=10.0, threshold=1e-5, eps=1e-16
 ):
     """Compute various network properties."""
     # Compute degrees and strengths
@@ -116,7 +116,7 @@ def compute_network_properties(
     io_matrix = compute_io_matrix(W, group_matrix)
 
     # Compute density
-    density = in_degrees.sum() / (N * N)
+    density = in_degrees.sum() / (N * N) * 100
 
     return {
         "correlations": {
@@ -154,7 +154,7 @@ def create_config(properties, N, M=10, num_epochs=3000, num_cycles=1):
         group_matrix[int(i), firms] = 1
 
     # Calculate epochs per phase
-    num_phases = 7  # Density, IO Matrix, Correlations, Hill Exponents, Smoothness, Fine Tuning
+    num_phases = 6  # Density, IO Matrix, Correlations, Hill Exponents, Smoothness, Fine Tuning
     epochs_per_phase = num_epochs // (num_phases * num_cycles)
 
     # Create config with tensor values converted to lists where needed
@@ -182,84 +182,84 @@ def create_config(properties, N, M=10, num_epochs=3000, num_cycles=1):
                 "weights": {
                     "correlation": 0.0,
                     "hill": 0.0,
-                    "io": 0.01,
-                    "smooth": 0.1,
+                    "io": 0.00,
+                    "smooth": 0.0,
                     "density": 10000.0,
-                    "continuity": 0.5,
-                },
-            },
-            {
-                "name": "IO Matrix",
-                "epochs": epochs_per_phase,
-                "weights": {
-                    "correlation": 0.0,
-                    "hill": 0.0,
-                    "io": 1.0,
-                    "smooth": 0.0,
-                    "density": 0.1,
                     "continuity": 0.0,
                 },
             },
-            {
-                "name": "Correlations",
-                "epochs": epochs_per_phase,
-                "weights": {
-                    "correlation": 1.0,
-                    "hill": 0.0,
-                    "io": 0.5,
-                    "smooth": 0.0,
-                    "density": 0.1,
-                    "continuity": 0.0,
-                },
-            },
-            {
-                "name": "Hill Exponents",
-                "epochs": epochs_per_phase,
-                "weights": {
-                    "correlation": 0.1,
-                    "hill": 1.0,
-                    "io": 0.5,
-                    "smooth": 0.0,
-                    "density": 0.1,
-                    "continuity": 0.0,
-                },
-            },
-            {
-                "name": "Smoothness",
-                "epochs": epochs_per_phase,
-                "weights": {
-                    "correlation": 0.1,
-                    "hill": 0.1,
-                    "io": 0.1,
-                    "smooth": 1.0,
-                    "density": 0.1,
-                    "continuity": 0.0,
-                },
-            },
-            {
-                "name": "Continuity",
-                "epochs": epochs_per_phase,
-                "weights": {
-                    "continuity": 1.0,
-                    "correlation": 0.0,
-                    "hill": 0.0,
-                    "io": 0.01,
-                    "smooth": 0.0,
-                    "density": 1.0,
-                },
-            },
-            {
-                "name": "Fine Tuning",
-                "epochs": epochs_per_phase,
-                "weights": {
-                    "correlation": 1.0,
-                    "hill": 1.0,
-                    "io": 1.0,
-                    "smooth": 7.0,
-                    "density": 0.0,
-                    "continuity": 1.0,
-                },
-            },
+            # {
+            #     "name": "IO Matrix",
+            #     "epochs": epochs_per_phase,
+            #     "weights": {
+            #         "correlation": 0.0,
+            #         "hill": 0.0,
+            #         "io": 1.0,
+            #         "smooth": 0.0,
+            #         "density": 0.0,
+            #         "continuity": 0.0,
+            #     },
+            # },
+            # {
+            #     "name": "Correlations",
+            #     "epochs": epochs_per_phase,
+            #     "weights": {
+            #         "correlation": 1.0,
+            #         "hill": 0.0,
+            #         "io": 0.5,
+            #         "smooth": 0.0,
+            #         "density": 0.0,
+            #         "continuity": 0.0,
+            #     },
+            # },
+            # {
+            #     "name": "Hill Exponents",
+            #     "epochs": epochs_per_phase,
+            #     "weights": {
+            #         "correlation": 0.1,
+            #         "hill": 1.0,
+            #         "io": 0.5,
+            #         "smooth": 0.0,
+            #         "density": 0.0,
+            #         "continuity": 0.0,
+            #     },
+            # },
+            # {
+            #     "name": "Smoothness",
+            #     "epochs": epochs_per_phase,
+            #     "weights": {
+            #         "correlation": 0.1,
+            #         "hill": 0.1,
+            #         "io": 0.1,
+            #         "smooth": 1.0,
+            #         "density": 0.0,
+            #         "continuity": 0.0,
+            #     },
+            # },
+            # {
+            #     "name": "Continuity",
+            #     "epochs": epochs_per_phase,
+            #     "weights": {
+            #         "continuity": 1.0,
+            #         "correlation": 0.0,
+            #         "hill": 0.0,
+            #         "io": 0.01,
+            #         "smooth": 0.0,
+            #         "density": 1.0,
+            #     },
+            # },
+            # {
+            #     "name": "Fine Tuning",
+            #     "epochs": epochs_per_phase,
+            #     "weights": {
+            #         "correlation": 1.0,
+            #         "hill": 1.0,
+            #         "io": 1.0,
+            #         "smooth": 1.0,
+            #         "density": 1.0,
+            #         "continuity": 1.0,
+            #     },
+            # },
         ],
         "learning_rate": 0.01,
         "num_epochs": num_epochs,
@@ -335,7 +335,7 @@ def main():
         json.dump(json_config, f, indent=2)
 
     # Compute initial losses (use tensor version)
-    initial_model = NetworkGenerator(config, normalize=False)
+    initial_model = NetworkGenerator(config)
     initial_log_weights = initial_model()
     W_initial = initial_model.get_network_weights()
     initial_loss, initial_partial_losses = compute_loss(initial_log_weights, config)

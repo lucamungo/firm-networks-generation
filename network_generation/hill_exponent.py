@@ -15,7 +15,7 @@ def compute_ccdf_and_fit_tail(
     tail_fraction: float,
     num_points: int,
     beta_ccdf: float,
-    eps: float = 1e-8,
+    eps: float = 1e-16,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Compute CCDF and fit power-law tail using soft thresholding.
@@ -91,7 +91,7 @@ def hill_loss_from_fit(
     ss_res: torch.Tensor,
     slope_target: float,
     lambda_line: float,
-    eps: float = 1e-8,
+    eps: float = 1e-16,
 ) -> torch.Tensor:
     """
     Compute loss based on slope mismatch and deviation from straight line.
@@ -129,7 +129,7 @@ def compute_hill_exponent(
     beta_tail: float = 1.0,
     is_discrete: bool = False,
     temperature: float = 0.1,  # Increased default temperature
-    eps: float = 1e-8,
+    eps: float = 1e-16,
 ) -> torch.Tensor:
     """Compute Hill exponent using soft thresholding.
 

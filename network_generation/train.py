@@ -266,6 +266,7 @@ def train_model_progressive(
         "learning_rate": [],
         "cycle": [],
         "phase": [],
+        "density": [],  # Add density to history tracking
     }
 
     best_loss = float("inf")
@@ -285,9 +286,33 @@ def train_model_progressive(
             phase_weights.update(phase["weights"])
             phase_config["loss_weights"] = phase_weights
 
-            # Create new optimizer and scheduler for this phase
+            # Check if density weight is zero in this phase
+            density_weight = phase_weights.get("density", 0.0)
+            density_training = density_weight > 0
+
+            # Freeze/unfreeze model parameters based on density weight
+            if hasattr(model, "freeze_density") and hasattr(model, "unfreeze_density"):
+                # If model has explicit density control methods, use them
+                if density_training:
+                    model.unfreeze_density()
+                    logger.info(
+                        f"Phase {phase_idx} ({phase['name']}): Unfreezing density parameters"
+                    )
+                else:
+                    model.freeze_density()
+                    logger.info(f"Phase {phase_idx} ({phase['name']}): Freezing density parameters")
+            else:
+                # For standard NetworkGenerator, we can't specifically freeze density parameters
+                # So we'll log a message but continue with all parameters
+                if not density_training:
+                    logger.info(
+                        f"Phase {phase_idx} ({phase['name']}): Density weight is zero but model doesn't support parameter freezing"
+                    )
+
+            # Create new optimizer with only trainable parameters
             phase_lr = phase.get("learning_rate", config["learning_rate"])
-            optimizer = optim.Adam(model.parameters(), lr=phase_lr)
+            trainable_params = [p for p in model.parameters() if p.requires_grad]
+            optimizer = optim.Adam(trainable_params, lr=phase_lr)
 
             scheduler = optim.lr_scheduler.ReduceLROnPlateau(
                 optimizer,
@@ -313,7 +338,8 @@ def train_model_progressive(
 
                 # Gradient clipping
                 torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), phase_config.get("max_grad_norm", 1.0)
+                    [p for p in model.parameters() if p.requires_grad],
+                    phase_config.get("max_grad_norm", 1.0),
                 )
 
                 # Update weights
@@ -333,7 +359,7 @@ def train_model_progressive(
                 # Learning rate scheduling
                 scheduler.step(loss)
 
-                # Update progress bar
+                # Update progress bar with more detailed density info
                 progress_bar.set_postfix(
                     {
                         "cycle": f"{cycle}/{num_cycles - 1}",
@@ -351,7 +377,7 @@ def train_model_progressive(
                             if partial_losses["smooth"].item() > 10
                             else f"{partial_losses['smooth'].item():.3f}"
                         ),
-                        "density": f"{partial_losses['density'].item():.3f}",
+                        "density": f"{partial_losses['density'].item():.0f}",
                         "lr": f"{current_lr:.2e}",
                     }
                 )

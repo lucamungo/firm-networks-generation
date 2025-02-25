@@ -8,7 +8,7 @@ import torch
 
 
 def compute_degrees(
-    W: torch.Tensor, beta_degree: float, dim: int = 1, eps: float = 1e-8, threshold: float = 1e-5
+    W: torch.Tensor, beta_degree: float, dim: int = 1, eps: float = 1e-16, threshold: float = 1e-5
 ) -> torch.Tensor:
     """
     Compute soft degrees of a weighted adjacency matrix.
@@ -44,7 +44,7 @@ def compute_strengths(
     beta: float = 5.0,
     threshold: float = 1e-5,
     dim: int = 1,
-    eps: float = 1e-8,
+    eps: float = 1e-16,
 ) -> torch.Tensor:
     """
     Compute node strengths of a weighted adjacency matrix.
@@ -77,7 +77,7 @@ def compute_strengths(
     return torch.sum(soft_masked_W, dim=dim) + eps
 
 
-def compute_log_correlation(x: torch.Tensor, y: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+def compute_log_correlation(x: torch.Tensor, y: torch.Tensor, eps: float = 1e-16) -> torch.Tensor:
     """
     Compute correlation between log-transformed variables.
 
@@ -113,7 +113,7 @@ def compute_log_correlation(x: torch.Tensor, y: torch.Tensor, eps: float = 1e-8)
 
 
 def compute_io_matrix(
-    W: torch.Tensor, group_matrix: torch.Tensor, eps: float = 1e-8
+    W: torch.Tensor, group_matrix: torch.Tensor, eps: float = 1e-16
 ) -> torch.Tensor:
     """
     Compute aggregated input-output matrix by groups.
@@ -151,7 +151,7 @@ def compute_ccdf(
     values: torch.Tensor,
     thresholds: torch.Tensor,
     beta: float,
-    eps: float = 1e-8,
+    eps: float = 1e-16,
     use_adaptive_beta: bool = True,
 ) -> torch.Tensor:
     """
@@ -203,7 +203,7 @@ def compute_smoothness_penalty(
     ccdf_values: torch.Tensor,
     thresholds: torch.Tensor,
     remove_mean_dt: bool = True,
-    eps: float = 1e-8,
+    eps: float = 1e-16,
 ) -> torch.Tensor:
     """
     Compute smoothness penalty based on second derivative of log-CCDF.
@@ -260,7 +260,9 @@ def compute_smoothness_penalty(
     return loss
 
 
-def compute_density(W: torch.Tensor, beta: float = 1.0, threshold: float = 1e-5, eps: float = 1e-8):
+def compute_density(
+    W: torch.Tensor, beta: float = 1.0, threshold: float = 1e-5, eps: float = 1e-16
+):
     """
     Compute density of a weighted adjacency matrix.
     """
@@ -273,4 +275,4 @@ def compute_density(W: torch.Tensor, beta: float = 1.0, threshold: float = 1e-5,
     # Apply sigmoid with temperature
     soft_adjacency = torch.sigmoid(beta * (W - threshold))
 
-    return torch.mean(soft_adjacency)
+    return torch.mean(soft_adjacency) * 100
