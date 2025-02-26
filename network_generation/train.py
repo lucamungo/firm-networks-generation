@@ -414,6 +414,7 @@ def train_model_progressive_with_dropout(
         component_dropout_rate: float = 0.1,  # Component dropout rate
         use_block_update: bool = False,  # Whether to use block coordinate descent
         block_update_cycle: int = 3,  # Number of epochs before switching parameter blocks
+        min_lr: float = 5e-7,
 ):
     """Train network generator model using progressive loss optimization with parameter dropout.
 
@@ -478,6 +479,8 @@ def train_model_progressive_with_dropout(
     total_epochs = sum(phase["epochs"] for phase in phases) * num_cycles
     progress_bar = tqdm(total=total_epochs, desc="Training")
     current_epoch = 0
+    current_lr = config["learning_rate"]
+    lr_cycle_decay = config.get("lr_cycle_decay", 0.9)
 
     # Function to apply component dropout
     def apply_component_dropout(model, rate):
@@ -520,6 +523,11 @@ def train_model_progressive_with_dropout(
 
     # Training cycles
     for cycle in range(num_cycles):
+
+        if cycle > 0:
+            current_lr = max(current_lr * lr_cycle_decay, min_lr)
+            logger.info(f"Cycle {cycle}: Reducing learning rate to {current_lr:.2e}")
+
         for phase_idx, phase in enumerate(phases):
             # Create phase-specific config
             phase_config = config.copy()
@@ -551,7 +559,12 @@ def train_model_progressive_with_dropout(
             phase_component_dropout = component_dropout_rate * (1.0 - phase_idx / len(phases) * 0.7)
 
             # Create new optimizer with only trainable parameters
-            phase_lr = phase.get("learning_rate", config["learning_rate"])
+            if "relative_learning_rate" in phase:
+                phase_lr = current_lr * phase["relative_learning_rate"]
+            else:
+                # For backward compatibility, still check for absolute learning_rate
+                phase_lr = phase.get("learning_rate", current_lr)
+
             trainable_params = [p for p in model.parameters() if p.requires_grad]
             optimizer = optim.Adam(trainable_params, lr=phase_lr)
 
@@ -560,7 +573,7 @@ def train_model_progressive_with_dropout(
                 mode="min",
                 factor=0.75,
                 patience=max(20, phase["epochs"] // 10),
-                min_lr=1e-6,
+                min_lr=min_lr,
                 threshold=1e-4,
                 threshold_mode="rel",
             )
@@ -685,6 +698,8 @@ def train_model_progressive_with_dropout(
                 )
                 progress_bar.update(1)
                 current_epoch += 1
+
+            current_lr = optimizer.param_groups[0]["lr"]
 
             # Log phase completion
             logger.info(f"Completed phase {phase_idx} ({phase['name']})")

@@ -183,84 +183,97 @@ def create_config(properties, N, M=10, num_epochs=3000, num_cycles=1):
             "disconnection": 1.0,
         },
         "training_phases": [
-            {
-                "name": "Density",
-                "epochs": epochs_per_phase,
-                "weights": {
-                    "correlation": 0.0,
-                    "hill": 0.0,
-                    "io": 0.00,
-                    "smooth": 1.0,
-                    "density": 1.0,
-                    "continuity": 0.0,
-                    "disconnection": 1.0,
-                },
-            },
+            # {
+            #     "name": "Density",
+            #     "epochs": epochs_per_phase,
+            #     "weights": {
+            #         "correlation": 0.0,
+            #         "hill": 0.0,
+            #         "io": 0.00,
+            #         "smooth": 1.0,
+            #         "density": 1.0,
+            #         "continuity": 0.0,
+            #         "disconnection": 1.0,
+            #     },
+            # },
             {
                 "name": "IO Matrix",
                 "epochs": epochs_per_phase,
                 "weights": {
                     "correlation": 0.0,
                     "hill": 0.0,
-                    "io": 1.0,
-                    "smooth": 1.0,
-                    "density": 0.1,
-                    "continuity": 0.0,
-                    "disconnection": 1.0,
-                },
-            },
-            {
-                "name": "Correlations",
-                "epochs": epochs_per_phase,
-                "weights": {
-                    "correlation": 1.0,
-                    "hill": 0.0,
-                    "io": 0.5,
-                    "smooth": 1.0,
-                    "density": 0.1,
-                    "continuity": 0.0,
-                    "disconnection": 1.0,
-                },
-            },
-            {
-                "name": "Hill Exponents",
-                "epochs": epochs_per_phase,
-                "weights": {
-                    "correlation": 0.1,
-                    "hill": 1.0,
-                    "io": 0.5,
-                    "smooth": 1.0,
-                    "density": 0.1,
-                    "continuity": 0.0,
-                    "disconnection": 1.0,
-                },
-            },
-            {
-                "name": "Smoothness",
-                "epochs": epochs_per_phase,
-                "weights": {
-                    "correlation": 0.1,
-                    "hill": 1.0,
-                    "io": 0.1,
+                    "io": 10.0,
                     "smooth": 10.0,
-                    "density": 0.1,
-                    "continuity": 0.0,
+                    "density": 10,
+                    "continuity": 10.0,
                     "disconnection": 1.0,
                 },
             },
-            {
-                "name": "Fine Tuning",
-                "epochs": epochs_per_phase,
-                "weights": {
-                    "correlation": 1.0,
-                    "hill": 1.0,
-                    "io": 1.0,
-                    "smooth": 1.0,
-                    "density": 0.1,
-                    "continuity": 1.0,
-                    "disconnection": 1.0,
-                },
-            },
+            # {
+            #     "name": "Hill",
+            #     "epochs": epochs_per_phase,
+            #     "weights": {
+            #         "correlation": 0.0,
+            #         "hill": 1.0,
+            #         "io": 1.0,
+            #         "smooth": 1.0,
+            #         "density": 1,
+            #         "continuity": 1.0,
+            #         "disconnection": 1.0,
+            #     },
+            # },
+            # {
+            #     "name": "Correlations",
+            #     "epochs": epochs_per_phase,
+            #     "weights": {
+            #         "correlation": 1.0,
+            #         "hill": 0.0,
+            #         "io": 0.5,
+            #         "smooth": 1.0,
+            #         "density": 0.1,
+            #         "continuity": 0.0,
+            #         "disconnection": 1.0,
+            #     },
+            # },
+            # {
+            #     "name": "Hill Exponents",
+            #     "epochs": epochs_per_phase,
+            #     "weights": {
+            #         "correlation": 0.1,
+            #         "hill": 1.0,
+            #         "io": 0.5,
+            #         "smooth": 1.0,
+            #         "density": 0.1,
+            #         "continuity": 0.0,
+            #         "disconnection": 1.0,
+            #     },
+            # },
+            # {
+            #     "name": "Smoothness",
+            #     "epochs": epochs_per_phase,
+            #     "weights": {
+            #         "correlation": 0.1,
+            #         "hill": 1.0,
+            #         "io": 0.1,
+            #         "smooth": 10.0,
+            #         "density": 0.1,
+            #         "continuity": 0.0,
+            #         "disconnection": 1.0,
+            #     },
+            # },
+            # {
+            #     "name": "Fine Tuning",
+            #     "epochs": epochs_per_phase,
+            #     "weights": {
+            #         "correlation": 1.0,
+            #         "hill": 1.0,
+            #         "io": 1.0,
+            #         "smooth": 1.0,
+            #         "density": 0.1,
+            #         "continuity": 1.0,
+            #         "disconnection": 1.0,
+            #     },
+            # },
         ],
         "learning_rate": 0.01,
         "num_epochs": num_epochs,
@@ -337,7 +350,7 @@ def main():
         json.dump(json_config, f, indent=2)
 
     # Initialize model
-    initial_model = NetworkGenerator(config)
+    initial_model = CSHNetworkGenerator(config)
     initial_log_weights = initial_model()
     W_initial = initial_model.get_network_weights()
 

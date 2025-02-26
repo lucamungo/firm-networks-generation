@@ -27,6 +27,7 @@ class NetworkConfig(TypedDict):
     io_matrix_target: torch.Tensor  # Target aggregated I/O matrix
     loss_weights: dict[str, float]  # Weights for different loss components
     learning_rate: float
+    lr_cycle_decay: float
     num_epochs: int
     beta_degree: float  # Softmax temperature for degree computation
     beta_ccdf: float  # Softmax temperature for CCDF computation
