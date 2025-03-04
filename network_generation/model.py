@@ -11,7 +11,6 @@ from typing import TypeVar
 import numpy as np
 import torch
 import torch.nn as nn
-from scipy import stats
 
 from .parse_config import NetworkConfig
 
@@ -24,10 +23,6 @@ T = TypeVar("T", bound="NetworkGenerator")
 This module contains an improved implementation of the initialization function
 that consistently uses log-weights for both density computation and evaluation.
 """
-
-import numpy as np
-import torch
-from scipy import stats
 
 
 def initialize_from_target_power_laws(config):

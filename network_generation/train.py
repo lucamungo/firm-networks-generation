@@ -405,16 +405,16 @@ def train_model_progressive(
 
 
 def train_model_progressive_with_dropout(
-        config_path: str | Path,
-        save_path: Optional[str | Path] = None,
-        device: str | torch.device = "cpu",
-        num_cycles: int = 3,
-        early_stopping_patience: int = 100,
-        dropout_rate: float = 0.2,  # Parameter dropout rate
-        component_dropout_rate: float = 0.1,  # Component dropout rate
-        use_block_update: bool = False,  # Whether to use block coordinate descent
-        block_update_cycle: int = 3,  # Number of epochs before switching parameter blocks
-        min_lr: float = 5e-7,
+    config_path: str | Path,
+    save_path: Optional[str | Path] = None,
+    device: str | torch.device = "cpu",
+    num_cycles: int = 3,
+    early_stopping_patience: int = 100,
+    dropout_rate: float = 0.2,  # Parameter dropout rate
+    component_dropout_rate: float = 0.1,  # Component dropout rate
+    use_block_update: bool = False,  # Whether to use block coordinate descent
+    block_update_cycle: int = 3,  # Number of epochs before switching parameter blocks
+    min_lr: float = 5e-7,
 ):
     """Train network generator model using progressive loss optimization with parameter dropout.
 
@@ -505,7 +505,7 @@ def train_model_progressive_with_dropout(
         for name, param in model.named_parameters():
             if param.requires_grad:
                 # Different dropout strategies for different parameters
-                if 'alpha' in name:
+                if "alpha" in name:
                     # Use higher retention rate for alpha (fewer dropouts)
                     mask = torch.rand_like(param) > (rate * 0.5)
                 else:
@@ -543,14 +543,17 @@ def train_model_progressive_with_dropout(
             if hasattr(model, "freeze_density") and hasattr(model, "unfreeze_density"):
                 if density_training:
                     model.unfreeze_density()
-                    logger.info(f"Phase {phase_idx} ({phase['name']}): Unfreezing density parameters")
+                    logger.info(
+                        f"Phase {phase_idx} ({phase['name']}): Unfreezing density parameters"
+                    )
                 else:
                     model.freeze_density()
                     logger.info(f"Phase {phase_idx} ({phase['name']}): Freezing density parameters")
             else:
                 if not density_training:
                     logger.info(
-                        f"Phase {phase_idx} ({phase['name']}): Density weight is zero but model doesn't support parameter freezing")
+                        f"Phase {phase_idx} ({phase['name']}): Density weight is zero but model doesn't support parameter freezing"
+                    )
 
             # Adjust dropout rate based on phase
             # Earlier phases benefit from higher dropout to explore parameter space
@@ -568,20 +571,27 @@ def train_model_progressive_with_dropout(
             trainable_params = [p for p in model.parameters() if p.requires_grad]
             optimizer = optim.Adam(trainable_params, lr=phase_lr)
 
-            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            # scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            #     optimizer,
+            #     mode="min",
+            #     factor=0.75,
+            #     patience=max(20, phase["epochs"] // 10),
+            #     min_lr=min_lr,
+            #     threshold=1e-4,
+            #     threshold_mode="rel",
+            # )
+
+            scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
                 optimizer,
-                mode="min",
-                factor=0.75,
-                patience=max(20, phase["epochs"] // 10),
-                min_lr=min_lr,
-                threshold=1e-4,
-                threshold_mode="rel",
+                T_0=phase["epochs"] // 4,  # Restart every quarter of phase
+                T_mult=2,  # Double period after each restart
+                eta_min=1e-6  # Minimum learning rate
             )
 
             # For block updates, determine which parameter group to update
             if use_block_update:
                 # We'll cycle through different parameter groups
-                param_groups = ['alpha', 'U', 'V']
+                param_groups = ["alpha", "U", "V"]
                 current_group_idx = 0
                 epochs_in_current_group = 0
 
@@ -601,11 +611,11 @@ def train_model_progressive_with_dropout(
                         param.requires_grad = False
 
                         # Unfreeze the current parameter group
-                        if current_group == 'alpha' and 'alpha' in name:
+                        if current_group == "alpha" and "alpha" in name:
                             param.requires_grad = True
-                        elif current_group == 'U' and '.U' in name:
+                        elif current_group == "U" and ".U" in name:
                             param.requires_grad = True
-                        elif current_group == 'V' and '.V' in name:
+                        elif current_group == "V" and ".V" in name:
                             param.requires_grad = True
 
                     epochs_in_current_group += 1

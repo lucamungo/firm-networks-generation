@@ -14,14 +14,17 @@ from macrocosm_visual.viz_setup import setup_matplotlib
 
 from network_generation.hill_exponent import compute_hill_exponent
 from network_generation.losses import compute_loss
-from network_generation.model import CSHNetworkGenerator, NetworkGenerator
+from network_generation.model import CSHNetworkGenerator
 from network_generation.stats import (
     compute_degrees,
     compute_io_matrix,
     compute_log_correlation,
     compute_strengths,
 )
-from network_generation.train import train_model, train_model_progressive, train_model_progressive_with_dropout
+from network_generation.train import (
+    train_model,
+    train_model_progressive_with_dropout,
+)
 from scripts.utils.analysis import print_comparison_table, print_loss_comparison
 from scripts.utils.viz import generate_plots
 
@@ -277,7 +280,7 @@ def create_config(properties, N, M=10, num_epochs=3000, num_cycles=1):
         ],
         "learning_rate": 0.01,
         "num_epochs": num_epochs,
-        "beta_degree": 5.0,
+        "beta_degree": 10.0,
         "threshold_degree": 0.0,
         "beta_ccdf": 5.0,
         "beta_tail": 10.0,
@@ -370,7 +373,9 @@ def main():
 
     print("\nStep 4: Training model...")
     if args.progressive:
-        model, history = train_model_progressive_with_dropout(config_path, num_cycles=args.num_cycles)
+        model, history = train_model_progressive_with_dropout(
+            config_path, num_cycles=args.num_cycles
+        )
     else:
         model, history = train_model(config_path)
 

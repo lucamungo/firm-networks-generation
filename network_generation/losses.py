@@ -11,7 +11,7 @@ from typing import Dict, Optional, Tuple
 import numpy as np
 import torch
 
-from .hill_exponent import compute_ccdf_and_fit_tail, compute_hill_exponent, hill_loss_from_fit
+from .hill_exponent import compute_hill_exponent
 from .stats import (
     compute_ccdf,
     compute_degrees,
@@ -360,6 +360,7 @@ def compute_continuity_loss(
             raise ValueError("values must be a 1D tensor")
 
         # Compute first differences
+        values, _ = torch.sort(values)
         dy = values[1:] - values[:-1]  # Shape: (K-1,)
 
         # Compute sum of squared first differences

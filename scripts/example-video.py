@@ -1,7 +1,7 @@
-"""Example for network generation with video recording.
+"""Example script for network generation with direct checkpoint recording.
 
-This script demonstrates the use of the updated network generation model
-with consistent log-weight density calculation and records the training evolution.
+This script demonstrates capturing video frames during a single training run
+by monitoring the internal state of the training function.
 """
 
 import argparse
@@ -14,17 +14,20 @@ from macrocosm_visual.viz_setup import setup_matplotlib
 
 from network_generation.hill_exponent import compute_hill_exponent
 from network_generation.losses import compute_loss
-from network_generation.model import CSHNetworkGenerator, NetworkGenerator
+from network_generation.model import NetworkGenerator, CSHNetworkGenerator
 from network_generation.stats import (
     compute_degrees,
     compute_io_matrix,
     compute_log_correlation,
     compute_strengths,
 )
-from network_generation.train import train_model, train_model_progressive, train_model_progressive_with_dropout
+from network_generation.train import (
+    train_model,
+    train_model_progressive_with_dropout,
+)
 from scripts.utils.analysis import print_comparison_table, print_loss_comparison
+from scripts.utils.direct_checkpoint import train_with_checkpoints
 from scripts.utils.viz import generate_plots
-from scripts.utils.video_recorder import record_training_with_checkpoints, generate_video_from_checkpoints
 
 setup_matplotlib()
 
@@ -179,24 +182,24 @@ def create_config(properties, N, M=10, num_epochs=3000, num_cycles=1):
             "hill": 1.0,
             "io": 5.0,
             "smooth": 1.0,
-            "density": 0.1,
-            "continuity": 100.0,
+            "density": 10,
+            "continuity": 1.0,
             "disconnection": 1.0,
         },
         "training_phases": [
-            # {
-            #     "name": "Density",
-            #     "epochs": epochs_per_phase,
-            #     "weights": {
-            #         "correlation": 0.0,
-            #         "hill": 0.0,
-            #         "io": 0.00,
-            #         "smooth": 1.0,
-            #         "density": 1.0,
-            #         "continuity": 0.0,
-            #         "disconnection": 1.0,
-            #     },
-            # },
+            {
+                "name": "Density",
+                "epochs": epochs_per_phase,
+                "weights": {
+                    "correlation": 0.0,
+                    "hill": 0.0,
+                    "io": 0.00,
+                    "smooth": 1.0,
+                    "density": 10.0,
+                    "continuity": 0.0,
+                    "disconnection": 1.0,
+                },
+            },
             {
                 "name": "IO Matrix",
                 "epochs": epochs_per_phase,
@@ -262,25 +265,25 @@ def create_config(properties, N, M=10, num_epochs=3000, num_cycles=1):
             #         "disconnection": 1.0,
             #     },
             # },
-            # {
-            #     "name": "Fine Tuning",
-            #     "epochs": epochs_per_phase,
-            #     "weights": {
-            #         "correlation": 1.0,
-            #         "hill": 1.0,
-            #         "io": 1.0,
-            #         "smooth": 1.0,
-            #         "density": 0.1,
-            #         "continuity": 1.0,
-            #         "disconnection": 1.0,
-            #     },
-            # },
+            {
+                "name": "Fine Tuning",
+                "epochs": epochs_per_phase,
+                "weights": {
+                    "correlation": 1.0,
+                    "hill": 1.0,
+                    "io": 1.0,
+                    "smooth": 1.0,
+                    "density": 0.1,
+                    "continuity": 1.0,
+                    "disconnection": 1.0,
+                },
+            },
         ],
         "learning_rate": 0.01,
         "num_epochs": num_epochs,
         "beta_degree": 5.0,
         "threshold_degree": 0.0,
-        "beta_ccdf": 5.0,
+        "beta_ccdf": 10.0,
         "beta_tail": 10.0,
         "tail_fraction": 0.05,
         "num_ccdf_points": 30,
@@ -325,8 +328,10 @@ def main():
         "--fps", type=int, default=10, help="Frames per second in the output video (default: 10)"
     )
     parser.add_argument(
-        "--video-dir", type=str, default="./training_video",
-        help="Directory to save video and frames (default: ./training_video)"
+        "--video-dir",
+        type=str,
+        default="./training_video",
+        help="Directory to save video and frames (default: ./training_video)",
     )
 
     args = parser.parse_args()
@@ -366,7 +371,7 @@ def main():
         json.dump(json_config, f, indent=2)
 
     # Initialize model
-    initial_model = NetworkGenerator(config)
+    initial_model = CSHNetworkGenerator(config)
     initial_log_weights = initial_model()
     W_initial = initial_model.get_network_weights()
 
@@ -390,45 +395,26 @@ def main():
     if args.record_video:
         print(f"Recording training evolution video with {args.frames} frames...")
 
-        if args.progressive:
-            # For progressive training with video recording
-            model, history, video_path = record_training_with_checkpoints(
-                config_path=config_path,  # Use the file path, not the config dict
-                num_frames=args.frames,
-                save_dir=args.video_dir,
-                train_function=train_model_progressive_with_dropout,
-                train_args=[],  # The config path will be created inside the function
-                train_kwargs={
-                    "num_cycles": args.num_cycles,
-                    "dropout_rate": 0.2,
-                    "component_dropout_rate": 0.1
-                }
-            )
-        else:
-            # For standard training with video recording
-            model, history, video_path = record_training_with_checkpoints(
-                config_path=config_path,  # Use the file path, not the config dict
-                num_frames=args.frames,
-                save_dir=args.video_dir,
-                train_function=train_model,
-                train_args=[],  # The config path will be created inside the function
-                train_kwargs={}
-            )
-
-        # Generate final video with all networks
-        video_path = generate_video_from_checkpoints(
-            checkpoint_dir=Path(args.video_dir) / "checkpoints",
-            config=config,
+        # Train with direct checkpoint recording
+        model, history, video_path = train_with_checkpoints(
+            config_path=config_path,
+            save_dir=args.video_dir,
+            num_frames=args.frames,
+            fps=args.fps,
             original_network=W_original,
             initial_network=W_initial,
-            save_dir=args.video_dir,
-            fps=args.fps
+            num_cycles=args.num_cycles,
+            dropout_rate=0.2,
+            component_dropout_rate=0.1,
         )
 
         print(f"Video saved to: {video_path}")
     else:
+        # Use standard training without video recording
         if args.progressive:
-            model, history = train_model_progressive_with_dropout(config_path, num_cycles=args.num_cycles)
+            model, history = train_model_progressive_with_dropout(
+                config_path, num_cycles=args.num_cycles
+            )
         else:
             model, history = train_model(config_path)
 

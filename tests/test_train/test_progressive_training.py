@@ -8,9 +8,6 @@ import numpy as np
 import pytest
 import torch
 
-from network_generation.losses import compute_loss
-from network_generation.model import NetworkGenerator
-from network_generation.parse_config import parse_config
 from network_generation.train import train_model_progressive
 
 logger = logging.getLogger(__name__)

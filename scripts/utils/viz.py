@@ -4,8 +4,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from network_generation.stats import compute_degrees, compute_strengths
-
 
 def plot_distributions(
     W_original,
@@ -102,7 +100,9 @@ def plot_distributions(
         M_initial = torch.log(W_initial)
         in_degree_initial = (M_initial > threshold_degree).sum(dim=0).detach().numpy()
         out_degree_initial = (M_initial > threshold_degree).sum(dim=1).detach().numpy()
-        in_strengths_initial = ((M_initial > threshold_degree) * W_initial).sum(dim=0).detach().numpy()
+        in_strengths_initial = (
+            ((M_initial > threshold_degree) * W_initial).sum(dim=0).detach().numpy()
+        )
         out_strengths_initial = (
             ((M_initial > threshold_degree) * W_initial).sum(dim=1).detach().numpy()
         )

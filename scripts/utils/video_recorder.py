@@ -4,27 +4,22 @@ This module provides functions to record the evolution of network distributions
 during training without modifying the core training functions.
 """
 
-import os
+import json
 import tempfile
 from pathlib import Path
-import time
-import json
-import torch
+
 import imageio
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
 from tqdm import tqdm
+
 from network_generation.model import NetworkGenerator
 from scripts.utils.viz import plot_distributions
 
 
 def record_training_with_checkpoints(
-    config_path,
-    num_frames,
-    save_dir,
-    train_function,
-    train_args,
-    train_kwargs
+    config_path, num_frames, save_dir, train_function, train_args, train_kwargs
 ):
     """Record training by saving checkpoints at regular intervals.
 
@@ -60,14 +55,14 @@ def record_training_with_checkpoints(
     else:
         # Load config from file
         config_path = Path(config_path)
-        if config_path.suffix == '.json':
-            with open(config_path, 'r') as f:
+        if config_path.suffix == ".json":
+            with open(config_path, "r") as f:
                 config = json.load(f)
             # Convert lists to tensors where needed
-            if 'group_matrix' in config and isinstance(config['group_matrix'], list):
-                config['group_matrix'] = torch.tensor(config['group_matrix'])
-            if 'io_matrix_target' in config and isinstance(config['io_matrix_target'], list):
-                config['io_matrix_target'] = torch.tensor(config['io_matrix_target'])
+            if "group_matrix" in config and isinstance(config["group_matrix"], list):
+                config["group_matrix"] = torch.tensor(config["group_matrix"])
+            if "io_matrix_target" in config and isinstance(config["io_matrix_target"], list):
+                config["io_matrix_target"] = torch.tensor(config["io_matrix_target"])
         else:
             # Assume it's a torch saved file
             config = torch.load(config_path)
@@ -108,11 +103,14 @@ def record_training_with_checkpoints(
 
     # First checkpoint - initial state
     init_checkpoint_path = checkpoint_dir / f"checkpoint_{0:06d}.pt"
-    torch.save({
-        'model_state_dict': model.state_dict(),
-        'epoch': 0,
-        'loss': 0.0,
-    }, init_checkpoint_path)
+    torch.save(
+        {
+            "model_state_dict": model.state_dict(),
+            "epoch": 0,
+            "loss": 0.0,
+        },
+        init_checkpoint_path,
+    )
 
     # Create a temporary directory for config files
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -152,13 +150,19 @@ def record_training_with_checkpoints(
             # Save this segment's config to a temporary file
             segment_config_json = segment_config.copy()
             # Convert tensors to lists for JSON serialization
-            if "group_matrix" in segment_config_json and torch.is_tensor(segment_config_json["group_matrix"]):
+            if "group_matrix" in segment_config_json and torch.is_tensor(
+                segment_config_json["group_matrix"]
+            ):
                 segment_config_json["group_matrix"] = segment_config_json["group_matrix"].tolist()
-            if "io_matrix_target" in segment_config_json and torch.is_tensor(segment_config_json["io_matrix_target"]):
-                segment_config_json["io_matrix_target"] = segment_config_json["io_matrix_target"].tolist()
+            if "io_matrix_target" in segment_config_json and torch.is_tensor(
+                segment_config_json["io_matrix_target"]
+            ):
+                segment_config_json["io_matrix_target"] = segment_config_json[
+                    "io_matrix_target"
+                ].tolist()
 
             segment_config_path = temp_dir / f"segment_config_{epochs_completed}.json"
-            with open(segment_config_path, 'w') as f:
+            with open(segment_config_path, "w") as f:
                 json.dump(segment_config_json, f)
 
             # Prepare arguments for the training function
@@ -184,11 +188,14 @@ def record_training_with_checkpoints(
 
             # Save checkpoint
             checkpoint_path = checkpoint_dir / f"checkpoint_{epochs_completed:06d}.pt"
-            torch.save({
-                'model_state_dict': model.state_dict(),
-                'epoch': epochs_completed,
-                'loss': segment_history["total"][-1] if segment_history["total"] else 0.0,
-            }, checkpoint_path)
+            torch.save(
+                {
+                    "model_state_dict": model.state_dict(),
+                    "epoch": epochs_completed,
+                    "loss": segment_history["total"][-1] if segment_history["total"] else 0.0,
+                },
+                checkpoint_path,
+            )
 
             # Update progress
             progress_bar.update(epochs_this_segment)
@@ -201,7 +208,7 @@ def record_training_with_checkpoints(
         config=config,
         original_network=None,  # Will need to be provided separately
         initial_network=initial_weights,
-        save_dir=save_dir
+        save_dir=save_dir,
     )
 
     return model, all_history, video_path
@@ -213,7 +220,7 @@ def generate_video_from_checkpoints(
     original_network=None,
     initial_network=None,
     save_dir="./training_video",
-    fps=10
+    fps=10,
 ):
     """Generate a video from model checkpoints."""
     checkpoint_dir = Path(checkpoint_dir)
@@ -260,7 +267,7 @@ def generate_video_from_checkpoints(
             W_initial=initial_network,
             beta_degree=beta_degree,
             threshold_degree=threshold_degree,
-            tail_fraction=tail_fraction
+            tail_fraction=tail_fraction,
         )
 
         # Add epoch and loss information

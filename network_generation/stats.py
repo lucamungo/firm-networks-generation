@@ -264,7 +264,7 @@ def compute_smoothness_penalty(
     loss = torch.sum(second_deriv * second_deriv)
 
     # Add penalty term for second derivative > 0
-    loss += torch.sum(torch.relu(-second_deriv))
+    loss += torch.sum(torch.relu(second_deriv))
 
     return loss
 
